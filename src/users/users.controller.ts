@@ -5,6 +5,7 @@ import { UpdateUserDto } from './dto/update-user.dto';
 import { UseGuards } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { RolesGuard } from '../common/guards/roles.guard';
+import { Roles } from '../common/decorators/roles.decorator';
 
 @UseGuards(AuthGuard('jwt'), RolesGuard)
 
@@ -18,6 +19,7 @@ export class UsersController {
   }
 
   @Get()
+  @Roles('ADMIN')
   findAll() {
     return this.usersService.findAll();
   }
