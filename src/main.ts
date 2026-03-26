@@ -6,6 +6,8 @@ import { ValidationPipe } from '@nestjs/common';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
+   app.setGlobalPrefix('api');
+
   // validación global de las solicitudes entrantes utilizando ValidationPipe
   app.useGlobalPipes(new ValidationPipe({
     whitelist: true, // Elimina propiedades no definidas en los DTOs
@@ -62,9 +64,6 @@ async function bootstrap() {
     customSiteTitle: 'Proyecto Dent API Documentation', // Título personalizado para la página de documentación
     customCss: '.swagger-ui .topbar { display: none }', // Personalización del estilo de la UI de Swagger
   });
-
-  // ✅ Prefijo global para las rutas de la API
-  app.setGlobalPrefix('api');
 
   await app.listen(process.env.PORT ?? 3000);
 

@@ -61,6 +61,7 @@ export class PatientService {
       const newPatient = await prisma.patient.create({
         data: {
           ...createPatientDto,
+          birthDate: new Date(createPatientDto.birthDate),
           medicalRecordNum,
           registeredBy: doctorId,
         },

@@ -1,4 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Type } from 'class-transformer';
 import { IsString, IsEmail, IsOptional, IsDateString, IsPhoneNumber, MinLength, MaxLength} from 'class-validator';
 
 export class CreatePatientDto {
@@ -32,8 +33,9 @@ export class CreatePatientDto {
         example: '1990-01-15',
         description: 'Fecha de nacimiento (YYYY-MM-DD)',
     })
+    @IsOptional()
     @IsDateString()
-    birthDate: Date;
+    birthDate: string;
 
     @ApiPropertyOptional({
         example: 'Calle Falsa 123, Ciudad, País',
