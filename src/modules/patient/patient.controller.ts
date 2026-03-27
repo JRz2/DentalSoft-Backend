@@ -13,7 +13,7 @@ export class PatientController {
   constructor(private readonly patientService: PatientService) {}
 
   @Post()
-  @Roles('ADMIN', 'DOCTOR')
+  @Roles('ADMIN', 'DOCTOR', 'RECEPTIONIST')
   create(
     @Body() createPatientDto: CreatePatientDto, 
     @CurrentUser() user: { id: number; role: string },) {
@@ -37,13 +37,13 @@ export class PatientController {
     }
   
   @Get(':id')
-  @Roles('ADMIN', 'DOCTOR')
+  @Roles('ADMIN', 'DOCTOR', 'RECEPTIONIST')
   findOne(@Param('id', ParseIntPipe) id: number) {
     return this.patientService.findOne(id);
   }
 
   @Patch(':id')
-  @Roles('ADMIN', 'DOCTOR')
+  @Roles('ADMIN', 'DOCTOR', 'RECEPTIONIST')
   update(
     @Param('id', ParseIntPipe) id: number, 
     @Body() updatePatientDto: UpdatePatientDto,

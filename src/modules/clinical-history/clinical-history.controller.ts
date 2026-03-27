@@ -13,13 +13,13 @@ export class ClinicalHistoryController {
   constructor(private readonly clinicalHistoryService: ClinicalHistoryService) {}
 
   @Get(':patientId')
-  @Roles('ADMIN', 'DOCTOR')
+  @Roles('ADMIN', 'DOCTOR', 'RECEPTIONIST')
   async findByPatientId(@Param('patientId', ParseIntPipe) patientId: number) {
     return this.clinicalHistoryService.findByPatientId(patientId);
   }
 
   @Put(':patientId')
-  @Roles('ADMIN', 'DOCTOR')
+  @Roles('ADMIN', 'DOCTOR', 'RECEPTIONIST')
   async update(
     @Param('patientId', ParseIntPipe) patientId: number,
     @Body() UpdateUserDto: UpdateClinicalHistoryDto,
