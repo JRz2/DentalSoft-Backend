@@ -207,6 +207,7 @@ model Treatment {
   
   // Relaciones
   sessions          TreatmentSession[]
+  appointments      Appointment[] 
   
   @@index([clinicalHistoryId])
   @@index([status])
@@ -244,14 +245,19 @@ model Appointment {
   appointmentDate   DateTime
   duration          Int      @default(30)
   status            AppointmentStatus @default(SCHEDULED)
-  treatmentSession  TreatmentSession?
+  treatmentId       Int?
+  treatment         Treatment?       @relation(fields: [treatmentId], references: [id])
+  treatmentSession  TreatmentSession? 
   
   reason            String
   diagnosis         String?
   notes             String?
   
+  createdBy         Int?
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
+  cancelledAt       DateTime?
+  cancellationReason String?
   
   @@index([patientId])
   @@index([doctorId])

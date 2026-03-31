@@ -8,6 +8,7 @@ import { PatientModule } from './modules/patient/patient.module';
 import { ClinicalHistoryModule } from './modules/clinical-history/clinical-history.module';
 import { TreatmentModule } from './modules/treatment/treatment.module';
 import { TreatmentSessionModule } from './modules/treatment-session/treatment-session.module';
+import { AppointmentModule } from './modules/appointment/appointment.module';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { TreatmentSessionModule } from './modules/treatment-session/treatment-se
     ClinicalHistoryModule,
     TreatmentModule,
     TreatmentSessionModule,
+    AppointmentModule,
   ],
 })
 export class AppModule {}
