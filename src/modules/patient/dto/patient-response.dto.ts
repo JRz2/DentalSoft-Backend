@@ -48,6 +48,9 @@ export class PatientResponseDto {
     @ApiProperty({ description: 'Doctor que registró', type: () => DoctorInfo })
     doctor?: DoctorInfo;
 
+    @ApiProperty({ nullable: true }) 
+    deletedAt?: Date | null; 
+
     @ApiProperty({ example: '2024-01-15T10:30:00Z', description: 'Fecha de creación' })
     createdAt: Date;
 

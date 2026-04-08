@@ -6,7 +6,15 @@ import { ValidationPipe } from '@nestjs/common';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
-   app.setGlobalPrefix('api');
+  app.setGlobalPrefix('api');
+
+   // Habilitar los Cors
+  app.enableCors({
+    origin: 'http://localhost:5173', // URL de tu frontend
+    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
+    credentials: true,
+    allowedHeaders: 'Content-Type, Accept, Authorization',
+  });
 
   // validación global de las solicitudes entrantes utilizando ValidationPipe
   app.useGlobalPipes(new ValidationPipe({

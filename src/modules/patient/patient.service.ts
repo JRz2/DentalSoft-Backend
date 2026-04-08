@@ -13,7 +13,7 @@ export class PatientService {
   private toPatientDto(patient: any): PatientResponseDto {
     return {
       id: patient.id,
-      fullName: patient.name,
+      fullName: patient.fullName,
       phoneNumber: patient.phoneNumber,
       email: patient.email,
       birthDate: patient.birthDate,
@@ -28,6 +28,7 @@ export class PatientService {
         name: patient.doctor.name,
         specialty: patient.doctor.specialty,
       } : undefined,
+      deletedAt: patient.deletedAt,
       createdAt: patient.createdAt,
       updatedAt: patient.updatedAt,
     };
@@ -97,15 +98,21 @@ export class PatientService {
     page?: number;
     limit?: number;
     search?: string;
-  }): Promise<{ data: PatientResponseDto[]; meta: any }> {
+  },
+  userRole: Role, ): Promise<{ data: PatientResponseDto[]; meta: any }> {
     const { page = 1, limit = 10, search } = params;
     const skip = (page - 1) * limit;
     
     let where: any = {};
+
+    if(userRole !== 'ADMIN') {
+      where.deletedAt = null;
+    }
+
     if (search) {
       where = {
         OR: [
-          { name: { contains: search, mode: 'insensitive' as const } },
+          { fullName: { contains: search, mode: 'insensitive' as const } },
           { phoneNumber: { contains: search} },
           { email: { contains: search, mode: 'insensitive' as const} },
         ],
@@ -190,10 +197,21 @@ export class PatientService {
       }
     }
 
+    const formattedData: any = { ...updatePatientDto };
+    if (formattedData.birthDate) {
+      formattedData.birthDate = new Date(formattedData.birthDate);
+    }
+
+    Object.keys(formattedData).forEach(key => {
+        if (formattedData[key] === '' || formattedData[key] === null) {
+          delete formattedData[key];
+        }
+    });
+
     const updatedPatient = await this.prisma.$transaction(async (prisma) => {
       const patient = await prisma.patient.update({
         where: { id },
-        data: updatePatientDto,
+        data: formattedData,
         include: {
           doctor: {
             select: { id: true, name: true },

@@ -6,6 +6,7 @@ import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
 import { RolesGuard } from 'src/common/guards/roles.guard';
 import { Roles } from 'src/common/decorators/roles.decorator';
 import { CurrentUser } from 'src/common/decorators/current-user.decorator';
+import { Role } from '@prisma/client';
 
 @Controller('patient')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -24,6 +25,7 @@ export class PatientController {
   @Get()
   @Roles('ADMIN', 'DOCTOR', 'RECEPTIONIST')
   findAll(
+    @CurrentUser() user: { id: number; role: string},
     @Query('page') page?: string,
     @Query('limit') limit?: string,
     @Query('search') search?: string,
@@ -32,7 +34,9 @@ export class PatientController {
         page: page ? parseInt(page) : 1,
         limit: limit ? parseInt(limit) : 10,
         search,
-      });
+      },
+      user.role as Role,
+    );
 
     }
   
