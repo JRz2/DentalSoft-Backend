@@ -1,6 +1,6 @@
 import { ApiPropertyOptional, PartialType } from '@nestjs/swagger';
 import { CreateClinicalHistoryDto } from './create-clinical-history.dto';
-import { IsObject, IsOptional } from 'class-validator';
+import { IsObject, IsOptional, IsString } from 'class-validator';
 
 export class UpdateClinicalHistoryDto extends PartialType(CreateClinicalHistoryDto) {
     @ApiPropertyOptional({ description: 'Odontograma', example: 'Caries',})
@@ -9,17 +9,17 @@ export class UpdateClinicalHistoryDto extends PartialType(CreateClinicalHistoryD
     odontogram?: any;
 
     @ApiPropertyOptional({ description: 'Antecedentes Médicos', example: 'hipertensión',})
-    @IsObject()
+    @IsString()
     @IsOptional()
-    medicalHistory?: any;
+    medicalHistory?: string;
     
     @ApiPropertyOptional({ description: 'Alergias', example: 'Penicilina',})
-    @IsObject()
+    @IsString()
     @IsOptional()
-    allergies?: any;
+    allergies?: string;
 
     @ApiPropertyOptional({ description: 'Observaciones', example: 'Paciente presenta dolor en la mandíbula',})
-    @IsObject()
+    @IsString()
     @IsOptional()
-    observations?: any;
+    observations?: string;
 }

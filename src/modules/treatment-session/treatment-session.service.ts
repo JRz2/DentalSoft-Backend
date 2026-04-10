@@ -7,7 +7,7 @@ import { Role } from '@prisma/client';
 
 @Injectable()
 export class TreatmentSessionService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) { }
 
   private ToResponseDto(session: any) {
     return {
@@ -33,38 +33,48 @@ export class TreatmentSessionService {
     });
 
     if (!treatment) {
-      throw new NotFoundException('Treatment with ID ${createTreatmentSessionDto.treatmentId} not found');
+      throw new NotFoundException(`Treatment with ID ${createTreatmentSessionDto.treatmentId} not found`);
     }
 
-    const appointment = await this.prisma.appointment.findUnique({
-      where: { id: createTreatmentSessionDto.appointmentId },
-    });
+    if (createTreatmentSessionDto.appointmentId) {
+      const appointment = await this.prisma.appointment.findUnique({
+        where: { id: createTreatmentSessionDto.appointmentId },
+      });
 
-    if (!appointment) {
-      throw new NotFoundException('Appointment with ID ${createTreatmentSessionDto.appointmentId} not found');
+      if (!appointment) {
+        throw new NotFoundException(`Appointment with ID ${createTreatmentSessionDto.appointmentId} not found`);
+      }
     }
 
     const existingSessions = await this.prisma.treatmentSession.findFirst({
-      where: { 
-        treatmentId: createTreatmentSessionDto.treatmentId ,
+      where: {
+        treatmentId: createTreatmentSessionDto.treatmentId,
         sessionNumber: createTreatmentSessionDto.sessionNumber,
       },
     });
 
     if (existingSessions) {
-      throw new ForbiddenException('A treatment session with number ${createTreatmentSessionDto.sessionNumber} already exists for this treatment');
+      throw new ForbiddenException(`A treatment session with number ${createTreatmentSessionDto.sessionNumber} already exists for this treatment`);
+    }
+
+    const sessionData: any = {
+      treatmentId: createTreatmentSessionDto.treatmentId,
+      sessionNumber: createTreatmentSessionDto.sessionNumber,
+      description: createTreatmentSessionDto.description,
+      notes: createTreatmentSessionDto.notes,
+      procedures: createTreatmentSessionDto.procedures,
+      sessionDate: createTreatmentSessionDto.sessionDate
+        ? new Date(createTreatmentSessionDto.sessionDate)
+        : new Date(),
+    };
+
+    if (createTreatmentSessionDto.appointmentId) {
+      sessionData.appointmentId = createTreatmentSessionDto.appointmentId;
     }
 
     const session = await this.prisma.$transaction(async (prisma) => {
       const newSession = await prisma.treatmentSession.create({
-        data: {
-          treatmentId: createTreatmentSessionDto.treatmentId,
-          sessionNumber: createTreatmentSessionDto.sessionNumber,
-          description: createTreatmentSessionDto.description,
-          notes: createTreatmentSessionDto.notes,
-          procedures: createTreatmentSessionDto.procedures,
-          appointmentId: createTreatmentSessionDto.appointmentId,
-        },
+        data: sessionData,
         include: {
           appointment: {
             select: {
@@ -97,7 +107,7 @@ export class TreatmentSessionService {
       where: { treatmentId },
       include: {
         appointment: {
-          select: { 
+          select: {
             id: true,
             appointmentDate: true,
             status: true,
@@ -114,17 +124,17 @@ export class TreatmentSessionService {
     const session = await this.prisma.treatmentSession.findUnique({
       where: { id },
       include: {
-          treatment: {
-            include: {
-              clinicalHistory: {
-                include: {
-                  patient: true,
-                },
+        treatment: {
+          include: {
+            clinicalHistory: {
+              include: {
+                patient: true,
               },
             },
           },
-          appointment: true,
         },
+        appointment: true,
+      },
     });
 
     if (!session) {
@@ -134,7 +144,7 @@ export class TreatmentSessionService {
   }
 
   async update(
-    id: number, 
+    id: number,
     updateTreatmentSessionDto: UpdateTreatmentSessionDto,
     userId: number,
   ): Promise<TreatmentSessionResponseDto> {
@@ -178,7 +188,7 @@ export class TreatmentSessionService {
   ): Promise<TreatmentSessionResponseDto> {
     const session = await this.findOne(id);
 
-    if (userRole !== 'ADMIN' && userRole !== 'DOCTOR'){
+    if (userRole !== 'ADMIN' && userRole !== 'DOCTOR') {
       throw new ForbiddenException('Only ADMIN or DOCTOR can complete sessions');
     }
 
@@ -217,7 +227,7 @@ export class TreatmentSessionService {
           action: 'COMPLETE_TREATMENT_SESSION',
           entity: 'TreatmentSession',
           entityId: id.toString(),
-          newValue: completedSession ,
+          newValue: completedSession,
         }
       });
 

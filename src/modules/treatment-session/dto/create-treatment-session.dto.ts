@@ -24,8 +24,14 @@ export class CreateTreatmentSessionDto {
     @IsOptional()
     procedures?: any;
 
-    @ApiProperty({ example: '1', description: 'ID de la cita asociada' })
+    @ApiProperty({ example: '2024-07-01T10:00:00Z', description: 'Fecha y hora de la sesión de tratamiento' })
+    @IsString()
+    @IsOptional()
+    sessionDate?: string;
+
+    @ApiPropertyOptional({ example: '1', description: 'ID de la cita asociada' })
     @IsInt()
-    appointmentId: number;
+    @IsOptional()
+    appointmentId?: number;
 
 }

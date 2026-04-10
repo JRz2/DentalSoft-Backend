@@ -10,7 +10,7 @@ import { CurrentUser } from 'src/common/decorators/current-user.decorator';
 @Controller('treatment-session')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class TreatmentSessionController {
-  constructor(private readonly treatmentSessionService: TreatmentSessionService) {}
+  constructor(private readonly treatmentSessionService: TreatmentSessionService) { }
 
   @Post()
   @Roles('ADMIN', 'DOCTOR')
@@ -27,11 +27,17 @@ export class TreatmentSessionController {
     return this.treatmentSessionService.findOne(id);
   }
 
+  @Get('treatment/:treatmentId')
+  @Roles('ADMIN', 'DOCTOR', 'RECEPTIONIST')
+  findByTreatment(@Param('treatmentId', ParseIntPipe) treatmentId: number) {
+    return this.treatmentSessionService.findByTreatmentId(treatmentId);
+  }
+
   @Put(':id')
   @Roles('ADMIN', 'DOCTOR')
-  update(@Param('id', ParseIntPipe) id: number, 
-  @Body() updateTreatmentSessionDto: UpdateTreatmentSessionDto,
-  @CurrentUser() user: { id: number; role: string }
+  update(@Param('id', ParseIntPipe) id: number,
+    @Body() updateTreatmentSessionDto: UpdateTreatmentSessionDto,
+    @CurrentUser() user: { id: number; role: string }
   ) {
     return this.treatmentSessionService.update(id, updateTreatmentSessionDto, user.id);
   }
@@ -39,7 +45,7 @@ export class TreatmentSessionController {
   @Patch(':id/complete')
   @Roles('ADMIN', 'DOCTOR')
   complete(
-    @Param('id', ParseIntPipe) id: number, 
+    @Param('id', ParseIntPipe) id: number,
     @CurrentUser() user: { id: number; role: string }
   ) {
     return this.treatmentSessionService.complete(id, user.id, user.role as any);

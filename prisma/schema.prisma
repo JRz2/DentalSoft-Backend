@@ -222,9 +222,10 @@ model TreatmentSession {
   description       String
   notes             String?
   procedures        Json?
-  
-  appointmentId     Int      @unique
-  appointment       Appointment @relation(fields: [appointmentId], references: [id])
+  sessionDate       DateTime @default(now())
+
+  appointmentId     Int?      @unique
+  appointment       Appointment? @relation(fields: [appointmentId], references: [id])
   completedAt       DateTime?
   
   createdAt         DateTime @default(now())
