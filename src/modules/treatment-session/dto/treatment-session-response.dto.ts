@@ -23,6 +23,9 @@ export class TreatmentSessionResponseDto {
     appointmentId: number;
 
     @ApiProperty()
+    sessionDate: Date;
+
+    @ApiProperty()
     createdAt: Date;
 
     @ApiProperty()

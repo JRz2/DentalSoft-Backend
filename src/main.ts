@@ -2,13 +2,24 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { ValidationPipe } from '@nestjs/common';
+import { NestExpressApplication } from '@nestjs/platform-express';
+import { join } from 'path';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
   app.setGlobalPrefix('api');
 
-   // Habilitar los Cors
+  // Servir archivos estáticos desde la carpeta public
+  app.useStaticAssets(join(__dirname, '..', 'public'), {
+    prefix: '/assets/',
+  });
+
+  app.useStaticAssets(join(process.cwd(), 'public'), {
+    prefix: '/assets/',
+  });
+
+  // Habilitar los Cors
   app.enableCors({
     origin: 'http://localhost:5173', // URL de tu frontend
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
@@ -22,8 +33,8 @@ async function bootstrap() {
     forbidNonWhitelisted: true, // Lanza un error si se envían propiedades no definidas
     transform: true, // Transforma los payloads a los tipos definidos en los DTOs
     transformOptions: {
-        enableImplicitConversion: true // Permite la conversión implícita de tipos (por ejemplo, string a number)
-    }, 
+      enableImplicitConversion: true // Permite la conversión implícita de tipos (por ejemplo, string a number)
+    },
   }));
 
   // ✅ Configuración de Swagger (ANTES del setGlobalPrefix)

@@ -1,14 +1,15 @@
-import { ConflictException, Injectable } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { PrismaService } from 'src/prisma/prisma.service';
 
 import * as bycrypt from 'bcrypt';
+import { ChangePasswordDto } from './dto/change-password.dto';
 
 @Injectable()
 export class UsersService {
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) { }
 
   private async hashPassword(password: string): Promise<string> {
     return bycrypt.hash(password, 10);
@@ -91,7 +92,7 @@ export class UsersService {
 
     return user;
   }
-  
+
   async findByEmail(email: string) {
     return this.prisma.user.findUnique({
       where: { email },
@@ -122,7 +123,7 @@ export class UsersService {
         updatedAt: true,
       },
     });
-    
+
     return user;
   }
 
@@ -138,4 +139,45 @@ export class UsersService {
       }
     });
   }
+
+  async changePassword(userId: number, dto: ChangePasswordDto) {
+    if (dto.newPassword !== dto.confirmPassword) {
+      throw new BadRequestException('Passwords do not match');
+    }
+
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { password: true },
+    });
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    const isPasswordValid = await bycrypt.compare(dto.currentPassword, user.password);
+    if (!isPasswordValid) {
+      throw new BadRequestException('Current password is incorrect');
+    }
+
+    const hashedPassword = await bycrypt.hash(dto.newPassword, 10);
+
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { password: hashedPassword },
+    });
+
+    return { message: 'Password changed successfully' };
+  }
+
+  async updateProfile(userId: number, updateUserDto: UpdateUserDto) {
+    const { role, isActive, password, ...allowedFields } = updateUserDto;
+    return this.update(userId, allowedFields);
+  }
+
+  async getProfile(userId: number) {
+    return this.findOne(userId);
+  }
+
 }
+
+

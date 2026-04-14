@@ -18,6 +18,7 @@ export class TreatmentSessionService {
       notes: session.notes,
       procedures: session.procedures,
       appointmentId: session.appointmentId,
+      sessionDate: session.sessionDate,
       createdAt: session.createdAt,
       updatedAt: session.updatedAt,
       appointment: session.appointment,

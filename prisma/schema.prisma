@@ -137,6 +137,44 @@ model AuditLog {
 }
 
 // ==================== MODELOS DE NEGOCIO ====================
+
+model ClinicConfig {
+  id                    Int      @id @default(autoincrement())
+  
+  // Datos básicos
+  businessName          String?  // Razón social
+  commercialName        String?   // Nombre comercial
+  nit                   String?   @unique
+  address               String?
+  mobile                String?
+  email                 String?
+  website               String?
+  
+  // Responsables
+  legalRepresentative   String?
+  legalRepresentativeId String?
+  contactName           String?
+  contactPhone          String?
+  
+  // Imagen y marca
+  logoUrl               String?
+  faviconUrl            String?
+  headerImageUrl        String?
+  footerText            String?
+  
+  // Datos legales
+  registrationNumber    String?
+  licenseNumber         String?
+  socialMedia           Json?
+  
+  // Auditoría
+  updatedBy             Int?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+  
+  @@map("clinic_config")
+}
+
 model Patient {
   id                Int      @id @default(autoincrement())
   fullName          String
