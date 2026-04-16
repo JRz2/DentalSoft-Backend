@@ -1,6 +1,6 @@
 import { Injectable, UnauthorizedException, ConflictException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import { PrismaService } from '../prisma/prisma.service';
+import { PrismaService } from '../../prisma/prisma.service';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import * as bcrypt from 'bcrypt';
@@ -24,8 +24,8 @@ export class AuthService {
     return bcrypt.compare(plainPassword, hashedPassword);
   }
 
-  private generateToken(userId: number, email: string, role: Role): string {
-    const payload = { sub: userId, email, role };
+  private generateToken(userId: number, email: string, role: Role, clinicId?: number | null): string {
+    const payload = { sub: userId, email, role, clinicId };
     return this.jwtService.sign(payload);
   }
 
@@ -61,10 +61,11 @@ export class AuthService {
             phoneNumber: true,
             isActive: true,
             createdAt: true,
+            clinicId: true,
         },
     });
 
-    const token = this.generateToken(user.id, user.email, user.role);
+    const token = this.generateToken(user.id, user.email, user.role, user.clinicId);
 
     return {
       access_token: token,
@@ -75,6 +76,9 @@ export class AuthService {
   async login(loginDto: LoginDto) {
     const user = await this.prisma.user.findUnique({
       where: { email: loginDto.email },
+      include: {
+        clinic: true,
+      },
     });
 
     if (!user) {
@@ -94,7 +98,7 @@ export class AuthService {
       throw new UnauthorizedException('User account is disabled');
     }
 
-    const token = this.generateToken(user.id, user.email, user.role);
+    const token = this.generateToken(user.id, user.email, user.role, user.clinicId);
 
     await this.prisma.user.update({
         where: { id: user.id },
@@ -109,6 +113,8 @@ export class AuthService {
             email: user.email,
             role: user.role,
             specialty: user.specialty,
+            clinicId: user.clinicId,
+            clinicName: user.clinic?.name ,
         },
     };
   }

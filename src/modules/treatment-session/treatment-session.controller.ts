@@ -16,9 +16,9 @@ export class TreatmentSessionController {
   @Roles('ADMIN', 'DOCTOR')
   create(
     @Body() createTreatmentSessionDto: CreateTreatmentSessionDto,
-    @CurrentUser() user: { id: number; role: string },
+    @CurrentUser() user: { id: number; role: string; clinicId: number },
   ) {
-    return this.treatmentSessionService.create(createTreatmentSessionDto, user.id);
+    return this.treatmentSessionService.create(createTreatmentSessionDto, user.id, user.clinicId);
   }
 
   @Get(':id')
@@ -37,18 +37,18 @@ export class TreatmentSessionController {
   @Roles('ADMIN', 'DOCTOR')
   update(@Param('id', ParseIntPipe) id: number,
     @Body() updateTreatmentSessionDto: UpdateTreatmentSessionDto,
-    @CurrentUser() user: { id: number; role: string }
+    @CurrentUser() user: { id: number; role: string; clinicId: number },
   ) {
-    return this.treatmentSessionService.update(id, updateTreatmentSessionDto, user.id);
+    return this.treatmentSessionService.update(id, updateTreatmentSessionDto, user.id, user.clinicId);
   }
 
   @Patch(':id/complete')
   @Roles('ADMIN', 'DOCTOR')
   complete(
     @Param('id', ParseIntPipe) id: number,
-    @CurrentUser() user: { id: number; role: string }
+    @CurrentUser() user: { id: number; role: string; clinicId: number },
   ) {
-    return this.treatmentSessionService.complete(id, user.id, user.role as any);
+    return this.treatmentSessionService.complete(id, user.id, user.role as any, user.clinicId);
   }
 
   @Delete(':id')

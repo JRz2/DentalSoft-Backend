@@ -27,7 +27,8 @@ export class TreatmentSessionService {
 
   async create(
     createTreatmentSessionDto: CreateTreatmentSessionDto,
-    userId: number
+    userId: number,
+    clinicId: number,
   ): Promise<TreatmentSessionResponseDto> {
     const treatment = await this.prisma.treatment.findUnique({
       where: { id: createTreatmentSessionDto.treatmentId },
@@ -94,6 +95,7 @@ export class TreatmentSessionService {
           entity: 'TreatmentSession',
           entityId: newSession.id.toString(),
           newValue: newSession,
+          clinicId: clinicId,
         }
       });
 
@@ -148,6 +150,7 @@ export class TreatmentSessionService {
     id: number,
     updateTreatmentSessionDto: UpdateTreatmentSessionDto,
     userId: number,
+    clinicId: number,
   ): Promise<TreatmentSessionResponseDto> {
     await this.findOne(id);
 
@@ -173,6 +176,7 @@ export class TreatmentSessionService {
           entity: 'TreatmentSession',
           entityId: session.id.toString(),
           newValue: session,
+          clinicId: clinicId,
         }
       });
 
@@ -186,6 +190,7 @@ export class TreatmentSessionService {
     id: number,
     userId: number,
     userRole: Role,
+    clinicId: number,
   ): Promise<TreatmentSessionResponseDto> {
     const session = await this.findOne(id);
 
@@ -229,6 +234,7 @@ export class TreatmentSessionService {
           entity: 'TreatmentSession',
           entityId: id.toString(),
           newValue: completedSession,
+          clinicId: clinicId,
         }
       });
 

@@ -64,6 +64,7 @@ export class AppointmentService {
 
   async create(createAppointmentDto: CreateAppointmentDto,
     userId: number,
+    clinicId: number,
   ): Promise<AppointmentResponseDto> {
     const patient = await this.prisma.patient.findUnique({
       where: { id: createAppointmentDto.patientId },
@@ -104,6 +105,7 @@ export class AppointmentService {
           treatmentId: createAppointmentDto.treatmentId,
           status: AppointmentStatus.SCHEDULED,
           createdBy: userId,
+          clinicId: clinicId,
         },
         include: {
           patient: {
@@ -137,6 +139,7 @@ export class AppointmentService {
               sessionNumber: nextSessionNumber,
               description: `Session ${nextSessionNumber} for treatment ${treatment.name}`,
               appointmentId: newAppointment.id,
+              clinicId: clinicId,
             },
           });
         }
@@ -149,6 +152,7 @@ export class AppointmentService {
           entity: 'Appointment',
           entityId: newAppointment.id.toString(),
           newValue: newAppointment,
+          clinicId: clinicId,
         },
       });
 
@@ -299,6 +303,7 @@ export class AppointmentService {
     updateAppointmentDto: UpdateAppointmentDto,
     userId: number,
     userRole: string,
+    clinicId: number,
   ): Promise<AppointmentResponseDto> {
     await this.findOne(id);
 
@@ -345,6 +350,7 @@ export class AppointmentService {
           entity: 'Appointment',
           entityId: id.toString(),
           newValue: appointment,
+          clinicId: clinicId,
         },
       });
 
@@ -359,6 +365,7 @@ export class AppointmentService {
     status: AppointmentStatus,
     userId: number,
     userRole: string,
+    clinicId: number,
     cancellationReason?: string,
   ): Promise<AppointmentResponseDto> {
     await this.findOne(id);
@@ -398,6 +405,7 @@ export class AppointmentService {
           entity: 'Appointment',
           entityId: id.toString(),
           newValue: appointment,
+          clinicId: clinicId,
         },
       });
 

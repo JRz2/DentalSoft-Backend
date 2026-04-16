@@ -1,12 +1,11 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
-import { CreateClinicConfigDto } from './dto/create-clinic-config.dto';
+import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { PrismaService } from '../../prisma/prisma.service';
 import { UpdateClinicConfigDto } from './dto/update-clinic-config.dto';
-import { PrismaService } from 'src/prisma/prisma.service';
 import { ClinicConfigResponseDto } from './dto/clinic-config-response.dto';
 
 @Injectable()
 export class ClinicConfigService {
-  constructor(private prisma: PrismaService) { }
+  constructor(private readonly prisma: PrismaService) { }
 
   private toResponseDto(config: any): ClinicConfigResponseDto {
     return {
@@ -24,58 +23,82 @@ export class ClinicConfigService {
       contactPhone: config.contactPhone,
       logoUrl: config.logoUrl,
       faviconUrl: config.faviconUrl,
+      headerImageUrl: config.headerImageUrl,
+      footerText: config.footerText,
+      registrationNumber: config.registrationNumber,
+      licenseNumber: config.licenseNumber,
+      socialMedia: config.socialMedia,
       createdAt: config.createdAt,
       updatedAt: config.updatedAt,
     };
-  };
+  }
 
-  async getConfig() {
-    let config = await this.prisma.clinicConfig.findFirst();
+  async getConfig(clinicId: number): Promise<ClinicConfigResponseDto> {
+    // Buscar configuración por clinicId
+    let config = await this.prisma.clinicConfig.findUnique({
+      where: { clinicId },
+    });
 
+    // Si no existe, crear configuración por defecto
     if (!config) {
-      const baseUrl = process.env.BASE_URL || 'http://localhost:3000';
+      // Obtener información de la clínica
+      const clinic = await this.prisma.clinic.findUnique({
+        where: { id: clinicId },
+      });
 
+      if (!clinic) {
+        throw new NotFoundException(`Clinic with ID ${clinicId} not found`);
+      }
+
+      // Crear configuración por defecto
       config = await this.prisma.clinicConfig.create({
         data: {
-          businessName: 'Clínica Dental Ejemplo',
-          commercialName: 'Sonrisa Dental',
-          nit: '900000000-1',
-          address: 'Calle Principal #123',
-          mobile: '+573001234567',
-          email: 'info@sonrisadental.com',
-          website: 'www.sonrisadental.com',
-          legalRepresentative: 'Dr. Juan Perez',
-          footerText: 'Gracias por confiar en nosotros',
-          logoUrl: `${baseUrl}/assets/logo-default.png`,
-          faviconUrl: `${baseUrl}/assets/favicon-default.ico`,
+          clinicId,
+          businessName: clinic.name,
+          commercialName: clinic.name,
+          email: clinic.email || '',
+          mobile: clinic.phone || '',
+          address: clinic.address || '',
         },
-      })
+      });
     }
 
     return this.toResponseDto(config);
-  }
-  create(createClinicConfigDto: CreateClinicConfigDto) {
-    return 'This action adds a new clinicConfig';
-  }
-
-  findAll() {
-    return `This action returns all clinicConfig`;
-  }
-
-  findOne(id: number) {
-    return `This action returns a #${id} clinicConfig`;
   }
 
   async updateConfig(
     updateDto: UpdateClinicConfigDto,
     userId: number,
+    clinicId: number,
   ): Promise<ClinicConfigResponseDto> {
-    const config = await this.prisma.clinicConfig.findFirst();
+    // Verificar que la configuración existe
+    let config = await this.prisma.clinicConfig.findUnique({
+      where: { clinicId },
+    });
 
     if (!config) {
-      throw new NotFoundException('Clinic configuration not found');
+      // Si no existe, crearla primero
+      const clinic = await this.prisma.clinic.findUnique({
+        where: { id: clinicId },
+      });
+
+      if (!clinic) {
+        throw new NotFoundException(`Clinic with ID ${clinicId} not found`);
+      }
+
+      config = await this.prisma.clinicConfig.create({
+        data: {
+          clinicId,
+          businessName: clinic.name,
+          commercialName: clinic.name,
+          email: clinic.email || '',
+          mobile: clinic.phone || '',
+          address: clinic.address || '',
+        },
+      });
     }
 
+    // Actualizar configuración
     const updatedConfig = await this.prisma.$transaction(async (prisma) => {
       const updated = await prisma.clinicConfig.update({
         where: { id: config.id },
@@ -85,6 +108,7 @@ export class ClinicConfigService {
         },
       });
 
+      // Registrar auditoría
       await prisma.auditLog.create({
         data: {
           userId,
@@ -92,6 +116,7 @@ export class ClinicConfigService {
           entity: 'ClinicConfig',
           entityId: updated.id.toString(),
           newValue: updated,
+          clinicId,
         },
       });
 
@@ -101,7 +126,30 @@ export class ClinicConfigService {
     return this.toResponseDto(updatedConfig);
   }
 
-  remove(id: number) {
-    return `This action removes a #${id} clinicConfig`;
+  // Método adicional para obtener todas las configuraciones (solo SUPER_ADMIN)
+  async getAllConfigs(): Promise<ClinicConfigResponseDto[]> {
+    const configs = await this.prisma.clinicConfig.findMany({
+      include: {
+        clinic: {
+          select: {
+            id: true,
+            name: true,
+            subdomain: true,
+          },
+        },
+      },
+    });
+
+    return configs.map((c) => this.toResponseDto(c));
+  }
+
+  // Método para obtener configuración por ID de clínica (con validación)
+  async getConfigByClinicId(clinicId: number, userRole: string, userClinicId?: number): Promise<ClinicConfigResponseDto> {
+    // Validar permisos
+    if (userRole !== 'SUPER_ADMIN' && userClinicId !== clinicId) {
+      throw new ForbiddenException('You do not have access to this clinic configuration');
+    }
+
+    return this.getConfig(clinicId);
   }
 }

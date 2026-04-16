@@ -1,24 +1,24 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsString, IsEmail, IsOptional, IsDateString, IsPhoneNumber, MinLength, MaxLength, IsBoolean} from 'class-validator';
+import { IsString, IsEmail, IsOptional, IsDateString, IsPhoneNumber, MinLength, MaxLength, IsBoolean, IsInt } from 'class-validator';
 
 export class CreatePatientDto {
-    @ApiProperty({ 
+    @ApiProperty({
         example: 'Juan Pérez',
         description: 'Nombre completo del paciente',
         minLength: 3,
         maxLength: 100,
-     })
+    })
     @IsString()
     @MinLength(3)
     @MaxLength(100)
     fullName: string;
-    
+
     @ApiProperty({
         example: '+59178945612',
         description: 'Número de teléfono del paciente',
     })
-    @IsString() 
+    @IsString()
     phoneNumber: string;
 
     @ApiProperty({
@@ -74,4 +74,8 @@ export class CreatePatientDto {
     @IsOptional()
     IsActive?: boolean;
 
+    @ApiPropertyOptional({ description: 'ID de la clínica (solo SUPER_ADMIN)' })
+    @IsInt()
+    @IsOptional()
+    clinicId?: number;
 }

@@ -1,45 +1,69 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, Put } from '@nestjs/common';
+import { Controller, Get, Put, Body, Query, UseGuards, BadRequestException, Param, ParseIntPipe, UnauthorizedException } from '@nestjs/common';
 import { ClinicConfigService } from './clinic-config.service';
-import { CreateClinicConfigDto } from './dto/create-clinic-config.dto';
 import { UpdateClinicConfigDto } from './dto/update-clinic-config.dto';
-import { Roles } from 'src/common/decorators/roles.decorator';
-import { CurrentUser } from 'src/common/decorators/current-user.decorator';
+import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { RolesGuard } from '../../common/guards/roles.guard';
+import { Roles } from '../../common/decorators/roles.decorator';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
 
 @Controller('clinic-config')
 export class ClinicConfigController {
   constructor(private readonly clinicConfigService: ClinicConfigService) { }
 
   @Get()
-  async getConfig() {
-    return this.clinicConfigService.getConfig();
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('SUPER_ADMIN', 'ADMIN', 'DOCTOR', 'RECEPTIONIST')
+  async getConfig(
+    @CurrentUser() user: { id: number; role: string; clinicId?: number | null },
+    @Query('clinicId') clinicIdParam?: string,
+  ) {
+    if (!user) {
+      throw new UnauthorizedException('User not authenticated');
+    }
+
+    let targetClinicId: number;
+
+    if (user.role === 'SUPER_ADMIN') {
+      if (!clinicIdParam) {
+        throw new BadRequestException('SUPER_ADMIN debe proporcionar clinicId');
+      }
+      targetClinicId = parseInt(clinicIdParam);
+    } else {
+      if (!user.clinicId) {
+        throw new BadRequestException('Usuario no asociado a ninguna clínica');
+      }
+      targetClinicId = user.clinicId;
+    }
+
+    return this.clinicConfigService.getConfig(targetClinicId);
   }
 
   @Put()
-  @Roles('ADMIN')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('SUPER_ADMIN', 'ADMIN')
   async updateConfig(
     @Body() updateDto: UpdateClinicConfigDto,
-    @CurrentUser() user: { id: number; role: string },
+    @CurrentUser() user: { id: number; role: string; clinicId?: number | null },
+    @Query('clinicId') clinicIdParam?: string,
   ) {
-    return this.clinicConfigService.updateConfig(updateDto, user.id);
-  }
+    if (!user) {
+      throw new UnauthorizedException('User not authenticated');
+    }
 
-  @Post()
-  create(@Body() createClinicConfigDto: CreateClinicConfigDto) {
-    return this.clinicConfigService.create(createClinicConfigDto);
-  }
+    let targetClinicId: number;
 
-  @Get()
-  findAll() {
-    return this.clinicConfigService.findAll();
-  }
+    if (user.role === 'SUPER_ADMIN') {
+      if (!clinicIdParam) {
+        throw new BadRequestException('SUPER_ADMIN debe proporcionar clinicId');
+      }
+      targetClinicId = parseInt(clinicIdParam);
+    } else {
+      if (!user.clinicId) {
+        throw new BadRequestException('Usuario no asociado a ninguna clínica');
+      }
+      targetClinicId = user.clinicId;
+    }
 
-  @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.clinicConfigService.findOne(+id);
-  }
-
-  @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.clinicConfigService.remove(+id);
+    return this.clinicConfigService.updateConfig(updateDto, user.id, targetClinicId);
   }
 }

@@ -18,9 +18,9 @@ export class AppointmentController {
   @Roles('ADMIN', 'DOCTOR', 'RECEPTIONIST')
   create(
     @Body() createAppointmentDto: CreateAppointmentDto,
-    @CurrentUser() user: { id: number; role: string},
+    @CurrentUser() user: { id: number; role: string; clinicId: number },
   ){
-    return this.appointmentService.create(createAppointmentDto, user.id);
+    return this.appointmentService.create(createAppointmentDto, user.id, user.clinicId);
   }
 
   @Get()
@@ -77,9 +77,9 @@ export class AppointmentController {
   update(
     @Param('id', ParseIntPipe) id: number,
     @Body() updateDto: UpdateAppointmentDto,
-    @CurrentUser() user: { id: number; role: string },
+    @CurrentUser() user: { id: number; role: string; clinicId: number },
   ) {
-    return this.appointmentService.update(id, updateDto, user.id, user.role as any);
+    return this.appointmentService.update(id, updateDto, user.id, user.role as any, user.clinicId);
   }
 
   @Patch(':id/status')
@@ -88,9 +88,9 @@ export class AppointmentController {
     @Param('id', ParseIntPipe) id: number,
     @Body('status') status: AppointmentStatus,
     @Body('cancellationReason') cancellationReason: string,
-    @CurrentUser() user: { id: number; role: string },
+    @CurrentUser() user: { id: number; role: string; clinicId: number },
   ) {
-    return this.appointmentService.updateStatus(id, status, user.id, user.role as any, cancellationReason);
+    return this.appointmentService.updateStatus(id, status, user.id, user.role as any, user.clinicId, cancellationReason);
   }
 
   @Delete(':id')

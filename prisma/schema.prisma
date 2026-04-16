@@ -9,6 +9,7 @@ datasource db {
 
 // ==================== ENUMS ====================
 enum Role {
+  SUPER_ADMIN
   ADMIN
   DOCTOR
   RECEPTIONIST
@@ -44,9 +45,48 @@ enum AppointmentStatus {
   NO_SHOW
 }
 
+// ==================== MULTI-TENANT ====================
+model Clinic {
+  id                Int      @id @default(autoincrement())
+  name              String   // Nombre de la clínica
+  subdomain         String   @unique  // "clinica1", "clinica2", "sonrisadental"
+  isActive          Boolean  @default(true)
+  
+  // Datos de contacto
+  phone             String?
+  email             String?
+  address           String?
+  
+  // Configuración
+  logoUrl           String?
+  faviconUrl        String?
+  timezone          String   @default("America/Bogota")
+  
+  // Auditoría
+  createdBy         Int?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  // Relaciones
+  users             User[]
+  patients          Patient[]
+  clinicConfig      ClinicConfig?
+  appointments      Appointment[]
+  treatments        Treatment[]
+  auditLogs         AuditLog[]
+  clinicalHistories ClinicalHistory[] 
+  treatmentSessions TreatmentSession[] 
+
+  
+  @@index([subdomain])
+  @@map("clinics")
+}
+
 // ==================== MODELOS DE AUTENTICACIÓN ====================
 model User {
   id             Int       @id @default(autoincrement())
+  clinicId       Int?
+  clinic         Clinic?    @relation(fields: [clinicId], references: [id])
   name           String
   email          String    @unique
   password       String
@@ -80,6 +120,7 @@ model User {
   patients       Patient[]   // Doctores que registraron pacientes
   appointments   Appointment[]
   
+  @@unique([clinicId, email]) 
   @@index([email])
   @@index([role])
   @@index([isActive])
@@ -120,6 +161,8 @@ model LoginAttempt {
 
 model AuditLog {
   id        Int      @id @default(autoincrement())
+  clinicId  Int     
+  clinic    Clinic   @relation(fields: [clinicId], references: [id]) 
   userId    Int?
   user      User?    @relation(fields: [userId], references: [id])
   action    String
@@ -130,6 +173,7 @@ model AuditLog {
   ipAddress String?
   createdAt DateTime @default(now())
   
+  @@index([clinicId])
   @@index([userId])
   @@index([action])
   @@index([createdAt])
@@ -140,7 +184,9 @@ model AuditLog {
 
 model ClinicConfig {
   id                    Int      @id @default(autoincrement())
-  
+  clinicId              Int      @unique
+  clinic                Clinic   @relation(fields: [clinicId], references: [id]) 
+
   // Datos básicos
   businessName          String?  // Razón social
   commercialName        String?   // Nombre comercial
@@ -172,11 +218,14 @@ model ClinicConfig {
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
   
+  @@index([clinicId])
   @@map("clinic_config")
 }
 
 model Patient {
   id                Int      @id @default(autoincrement())
+  clinicId          Int
+  clinic            Clinic    @relation(fields: [clinicId], references: [id])
   fullName          String
   phoneNumber       String
   email             String?
@@ -201,6 +250,7 @@ model Patient {
   clinicalHistory   ClinicalHistory?
   appointments      Appointment[]
   
+  @@unique([clinicId, medicalRecordNum])
   @@index([fullName])
   @@index([phoneNumber])
   @@index([registeredBy])
@@ -209,6 +259,8 @@ model Patient {
 
 model ClinicalHistory {
   id                Int      @id @default(autoincrement())
+  clinicId          Int     
+  clinic            Clinic   @relation(fields: [clinicId], references: [id]) 
   patientId         Int      @unique
   patient           Patient  @relation(fields: [patientId], references: [id])
   
@@ -223,11 +275,14 @@ model ClinicalHistory {
   // Relaciones
   treatments        Treatment[]
   
+  @@index([clinicId])
   @@index([patientId])
 }
 
 model Treatment {
   id                Int      @id @default(autoincrement())
+  clinicId          Int     
+  clinic            Clinic   @relation(fields: [clinicId], references: [id]) 
   clinicalHistoryId Int
   clinicalHistory   ClinicalHistory @relation(fields: [clinicalHistoryId], references: [id])
   
@@ -247,12 +302,15 @@ model Treatment {
   sessions          TreatmentSession[]
   appointments      Appointment[] 
   
+  @@index([clinicId])
   @@index([clinicalHistoryId])
   @@index([status])
 }
 
 model TreatmentSession {
   id                Int      @id @default(autoincrement())
+  clinicId          Int      
+  clinic            Clinic   @relation(fields: [clinicId], references: [id])
   treatmentId       Int
   treatment         Treatment @relation(fields: [treatmentId], references: [id])
   
@@ -269,6 +327,7 @@ model TreatmentSession {
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
   
+  @@index([clinicId])
   @@index([treatmentId])
   @@index([appointmentId])
   @@index([sessionNumber])
@@ -276,6 +335,8 @@ model TreatmentSession {
 
 model Appointment {
   id                Int      @id @default(autoincrement())
+  clinicId          Int      
+  clinic            Clinic   @relation(fields: [clinicId], references: [id]) 
   patientId         Int
   patient           Patient  @relation(fields: [patientId], references: [id])
   doctorId          Int
@@ -298,6 +359,7 @@ model Appointment {
   cancelledAt       DateTime?
   cancellationReason String?
   
+  @@index([clinicId])
   @@index([patientId])
   @@index([doctorId])
   @@index([appointmentDate])

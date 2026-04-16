@@ -46,6 +46,7 @@ export class ClinicalHistoryService {
     patientId: number,
     updateDto: UpdateClinicalHistoryDto,
     userId: number,
+    clinicId: number,
   ): Promise<ClinicalHistoryResponseDto> {
     await this.findByPatientId(patientId);
 
@@ -61,6 +62,7 @@ export class ClinicalHistoryService {
         entity: 'ClinicalHistory',
         entityId: updatedHistory.id.toString(),
         newValue: updatedHistory,
+        clinicId: clinicId,
       },
     });
     return this.toResponseDto(updatedHistory);

@@ -19,9 +19,9 @@ export class TreatmentController {
   create(
     @Param('clinicalHistoryId', ParseIntPipe) clinicalHistoryId: number,
     @Body() createTreatmentDto: CreateTreatmentDto,
-    @CurrentUser() user: {id: number; role: string},
+    @CurrentUser() user: {id: number; role: string; clinicId: number},
   ) {
-    return this.treatmentService.create(createTreatmentDto, clinicalHistoryId, user.id);
+    return this.treatmentService.create(createTreatmentDto, clinicalHistoryId, user.id, user.clinicId);
   }
 
   @Get('patient/:patientId')
@@ -41,17 +41,17 @@ export class TreatmentController {
   update(
     @Param('id', ParseIntPipe) id: string, 
     @Body() updateTreatmentDto: UpdateTreatmentDto,
-    @CurrentUser() user: {id: number, role: string},
+    @CurrentUser() user: {id: number, role: string; clinicId: number},
   ) {
-    return this.treatmentService.update(+id, updateTreatmentDto, user.id);
+    return this.treatmentService.update(+id, updateTreatmentDto, user.id, user.clinicId);
   }
 
   @Delete(':id')
   @Roles('ADMIN', 'DOCTOR')
   cancel(
     @Param('id', ParseIntPipe) id: number,
-    @CurrentUser() user: { id: number; role: string },
+    @CurrentUser() user: { id: number; role: string; clinicId: number },
   ) {
-    return this.treatmentService.cancel(id, user.id, user.role as any);
+    return this.treatmentService.cancel(id, user.id, user.role as any, user.clinicId);
   }
 }

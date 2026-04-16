@@ -31,6 +31,7 @@ export class TreatmentService {
     createDto: CreateTreatmentDto,
     clinicalHistoryId: number,
     userId: number,
+    clinicId: number,
   ): Promise<TreatmentResponseDto> {
     const clinicalHistory = await this.prisma.clinicalHistory.findUnique({
       where: { id: clinicalHistoryId },
@@ -49,6 +50,7 @@ export class TreatmentService {
           type: createDto.type,
           estimatedSessions: createDto.estimatedSessions,
           status: createDto.status || 'PLANNED',
+          clinicId: clinicId,
         },
         include: {
           sessions: true,
@@ -62,6 +64,7 @@ export class TreatmentService {
           entity: 'Treatment',
           entityId: newTreatment.id.toString(),
           newValue: newTreatment,
+          clinicId: clinicId,
         },
       });
 
@@ -133,6 +136,7 @@ export class TreatmentService {
   async update(
     id: number, 
     updateDto: UpdateTreatmentDto,
+    clinicId: number,
     userId: number): Promise<TreatmentResponseDto> {
       await this.findOne(id);
 
@@ -150,6 +154,7 @@ export class TreatmentService {
             entity: 'treatment',
             entityId: id.toString(),
             newValue: treatment,
+            clinicId: clinicId,
           },
         });
 
@@ -159,7 +164,7 @@ export class TreatmentService {
       return this.ToResponseDto(updatedTreatment);
   }
 
-  async cancel(id: number, userId: number, userRole: Role): Promise<{message: string}>{
+  async cancel(id: number, userId: number, userRole: Role, clinicId: number): Promise<{message: string}>{
     await this.findOne(id);
 
     if(userRole !=='ADMIN' && userRole !=='DOCTOR'){
@@ -179,6 +184,7 @@ export class TreatmentService {
         entity: 'treatment',
         entityId: id.toString(),
         oldValue: treatment,
+        clinicId: clinicId,
       },
     });
 

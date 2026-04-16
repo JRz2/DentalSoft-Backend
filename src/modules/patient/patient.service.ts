@@ -1,4 +1,4 @@
-import { ConflictException, ForbiddenException, Injectable, NotFoundException, } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, } from '@nestjs/common';
 import { CreatePatientDto } from './dto/create-patient.dto';
 import { UpdatePatientDto } from './dto/update-patient.dto';
 import { PrismaService } from 'src/prisma/prisma.service';
@@ -7,7 +7,7 @@ import { Role } from '@prisma/client';
 
 @Injectable()
 export class PatientService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) { }
 
   //converscion de los DTo
   private toPatientDto(patient: any): PatientResponseDto {
@@ -34,20 +34,44 @@ export class PatientService {
     };
   }
 
-  private async generateMedicalRecordNum(): Promise<string> {
+  private async generateMedicalRecordNum(clinicId: number): Promise<string> {
     const lastPatient = await this.prisma.patient.findFirst({
+      where: { clinicId: clinicId },
       orderBy: { createdAt: 'desc' },
-    }); 
+    });
 
     const nextNumber = (lastPatient?.id || 0) + 1;
     const year = new Date().getFullYear();
-    return `P-${year}-${nextNumber.toString().padStart(5, '0')}`;
+    return `P-${year}-${clinicId}-${nextNumber.toString().padStart(5, '0')}`;
   }
 
   async create(
-    createPatientDto: CreatePatientDto, doctorId: number): Promise<PatientResponseDto> {
+    createPatientDto: CreatePatientDto, doctorId: number, userRole: Role, userClinicId: number): Promise<PatientResponseDto> {
+
+    let targetClinicId = userClinicId;
+    if (userRole === 'SUPER_ADMIN') {
+      if (!createPatientDto.clinicId) {
+        throw new BadRequestException('SUPER_ADMIN must specify clinicId');
+      }
+      targetClinicId = createPatientDto.clinicId;
+    } else {
+      targetClinicId = userClinicId;
+    }
+
+    if (userRole === 'SUPER_ADMIN') {
+      const clinic = await this.prisma.clinic.findUnique({
+        where: { id: targetClinicId },
+      });
+      if (!clinic) {
+        throw new NotFoundException('Clinic not found');
+      }
+    }
+
     const existingPatient = await this.prisma.patient.findFirst({
-      where: { phoneNumber: createPatientDto.phoneNumber },
+      where: {
+        phoneNumber: createPatientDto.phoneNumber,
+        clinicId: targetClinicId,
+      },
     });
 
     if (existingPatient) {
@@ -56,7 +80,7 @@ export class PatientService {
       );
     }
 
-    const medicalRecordNum = await this.generateMedicalRecordNum();
+    const medicalRecordNum = await this.generateMedicalRecordNum(targetClinicId);
 
     const patient = await this.prisma.$transaction(async (prisma) => {
       const newPatient = await prisma.patient.create({
@@ -65,17 +89,19 @@ export class PatientService {
           birthDate: new Date(createPatientDto.birthDate),
           medicalRecordNum,
           registeredBy: doctorId,
+          clinicId: targetClinicId,
         },
         include: {
           doctor: {
             select: { id: true, name: true },
           },
-        },  
+        },
       });
 
       await prisma.clinicalHistory.create({
         data: {
           patientId: newPatient.id,
+          clinicId: targetClinicId,
         },
       });
 
@@ -84,8 +110,9 @@ export class PatientService {
           userId: doctorId,
           action: 'CREATE_PATIENT',
           entity: 'Patient',
-          entityId: newPatient.id.toString(), 
+          entityId: newPatient.id.toString(),
           newValue: new Date(),
+          clinicId: targetClinicId,
         },
       });
       return newPatient;
@@ -94,44 +121,47 @@ export class PatientService {
     return this.toPatientDto(patient);
   }
 
-  async findAll(params: {
-    page?: number;
-    limit?: number;
-    search?: string;
-  },
-  userRole: Role, ): Promise<{ data: PatientResponseDto[]; meta: any }> {
+  async findAll(
+    clinicId: number,
+    params: {
+      page?: number;
+      limit?: number;
+      search?: string;
+    },
+    userRole: Role,): Promise<{ data: PatientResponseDto[]; meta: any }> {
     const { page = 1, limit = 10, search } = params;
     const skip = (page - 1) * limit;
-    
-    let where: any = {};
 
-    if(userRole !== 'ADMIN') {
+    let where: any = { clinicId };
+
+    if (userRole !== 'ADMIN') {
       where.deletedAt = null;
     }
 
     if (search) {
       where = {
+        clinicId,
         OR: [
           { fullName: { contains: search, mode: 'insensitive' as const } },
-          { phoneNumber: { contains: search} },
-          { email: { contains: search, mode: 'insensitive' as const} },
+          { phoneNumber: { contains: search } },
+          { email: { contains: search, mode: 'insensitive' as const } },
         ],
       };
     }
-      const [patients, total] = await Promise.all([
-        this.prisma.patient.findMany({
-          where,
-          skip,
-          take: limit,
-          orderBy: { createdAt: 'desc' },
-          include: {
-            doctor: {
-              select: { id: true, name: true },
-            },
+    const [patients, total] = await Promise.all([
+      this.prisma.patient.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+        include: {
+          doctor: {
+            select: { id: true, name: true },
           },
-        }),
-        this.prisma.patient.count({ where }),
-      ]);
+        },
+      }),
+      this.prisma.patient.count({ where }),
+    ]);
 
     return {
       data: patients.map((patient) => this.toPatientDto(patient)),
@@ -150,43 +180,44 @@ export class PatientService {
       where: { id },
       include: {
         doctor: {
-          select: { 
-            id: true, 
-            name: true 
+          select: {
+            id: true,
+            name: true
           },
         },
-      clinicalHistory: true,
-      appointments: {
-        take: 5,
-        orderBy: { appointmentDate: 'desc' },
-        include: {
-          doctor: {
-            select: { 
-              id: true, 
-              name: true 
+        clinicalHistory: true,
+        appointments: {
+          take: 5,
+          orderBy: { appointmentDate: 'desc' },
+          include: {
+            doctor: {
+              select: {
+                id: true,
+                name: true
+              },
             },
           },
         },
       },
-    },
     });
 
     if (!patient) {
       throw new NotFoundException('Paciente no encontrado');
-      
+
     }
     return this.toPatientDto(patient);
   }
 
   async update(
-    id: number, 
+    id: number,
     updatePatientDto: UpdatePatientDto,
     userId: number,
     userRole: Role,
-  ): Promise<PatientResponseDto>  {
+    clinicId: number,
+  ): Promise<PatientResponseDto> {
     await this.findOne(id);
 
-    if(userRole !== 'ADMIN'){
+    if (userRole !== 'ADMIN') {
       const patient = await this.prisma.patient.findUnique({
         where: { id },
         select: { registeredBy: true },
@@ -203,9 +234,9 @@ export class PatientService {
     }
 
     Object.keys(formattedData).forEach(key => {
-        if (formattedData[key] === '' || formattedData[key] === null) {
-          delete formattedData[key];
-        }
+      if (formattedData[key] === '' || formattedData[key] === null) {
+        delete formattedData[key];
+      }
     });
 
     const updatedPatient = await this.prisma.$transaction(async (prisma) => {
@@ -226,6 +257,7 @@ export class PatientService {
           entity: 'Patient',
           entityId: id.toString(),
           newValue: patient,
+          clinicId,
         },
       });
 
@@ -235,10 +267,10 @@ export class PatientService {
     return this.toPatientDto(updatedPatient);
   }
 
-  async remove(id: number, userId: number, userRole: Role): Promise<{ message: string }> {
+  async remove(id: number, userId: number, userRole: Role, clinicId: number): Promise<{ message: string }> {
     await this.findOne(id);
 
-    if(userRole !== 'ADMIN'){
+    if (userRole !== 'ADMIN') {
       throw new ForbiddenException('No tienes permiso para eliminar este paciente');
     }
 
@@ -247,15 +279,16 @@ export class PatientService {
       data: { deletedAt: new Date() },
     });
 
-      await this.prisma.auditLog.create({
-        data: {
-          userId,
-          action: 'DELETE_PATIENT',
-          entity: 'Patient',
-          entityId: id.toString(),
-          newValue: deletedPatient,
-        },
-      });
+    await this.prisma.auditLog.create({
+      data: {
+        userId,
+        action: 'DELETE_PATIENT',
+        entity: 'Patient',
+        entityId: id.toString(),
+        newValue: deletedPatient,
+        clinicId,
+      },
+    });
 
     return { message: 'Paciente eliminado exitosamente' };
   }

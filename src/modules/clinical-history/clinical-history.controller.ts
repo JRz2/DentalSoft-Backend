@@ -10,7 +10,7 @@ import { CurrentUser } from 'src/common/decorators/current-user.decorator';
 @Controller('clinical-history')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class ClinicalHistoryController {
-  constructor(private readonly clinicalHistoryService: ClinicalHistoryService) {}
+  constructor(private readonly clinicalHistoryService: ClinicalHistoryService) { }
 
   @Get(':patientId')
   @Roles('ADMIN', 'DOCTOR', 'RECEPTIONIST')
@@ -19,13 +19,18 @@ export class ClinicalHistoryController {
   }
 
   @Put(':patientId')
-  @Roles('ADMIN', 'DOCTOR', 'RECEPTIONIST')
+  @Roles('SUPER_ADMIN', 'ADMIN', 'DOCTOR')
   async update(
     @Param('patientId', ParseIntPipe) patientId: number,
-    @Body() UpdateUserDto: UpdateClinicalHistoryDto,
-    @CurrentUser() user: { id: number; role: string },
+    @Body() updateDto: UpdateClinicalHistoryDto,
+    @CurrentUser() user: { id: number; clinicId: number },
   ) {
-    return this.clinicalHistoryService.update(patientId, UpdateUserDto, user.id);
+    return this.clinicalHistoryService.update(
+      patientId,
+      updateDto,
+      user.id,
+      user.clinicId,  
+    );
   }
 
 
