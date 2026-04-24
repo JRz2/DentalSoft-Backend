@@ -40,7 +40,6 @@ export class AppModule {
         { path: 'api/auth/register', method: RequestMethod.POST },
         { path: 'docs', method: RequestMethod.GET },
         { path: 'docs/(.*)', method: RequestMethod.GET },
-        { path: 'api/clinic-config/public', method: RequestMethod.GET },
       )
       .forRoutes({ path: '*', method: RequestMethod.ALL });
   }

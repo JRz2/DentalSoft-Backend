@@ -63,6 +63,13 @@ export class UsersService {
         licenseNumber: true,
         phoneNumber: true,
         isActive: true,
+        clinic: {
+          select: {
+            id: true,
+            name: true,
+            subdomain: true,
+          },
+        },
         createdAt: true,
         updatedAt: true,
       },

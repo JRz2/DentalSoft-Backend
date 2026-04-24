@@ -41,12 +41,13 @@ export class UsersController {
   }
 
   @Post()
+  @Roles('SUPER_ADMIN', 'ADMIN')
   create(@Body() createUserDto: CreateUserDto) {
     return this.usersService.create(createUserDto);
   }
 
   @Get()
-  @Roles('ADMIN')
+  @Roles('SUPER_ADMIN', 'ADMIN')
   findAll() {
     return this.usersService.findAll();
   }

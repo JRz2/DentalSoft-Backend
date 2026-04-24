@@ -8,7 +8,7 @@ import { Roles } from 'src/common/decorators/roles.decorator';
 
 @Controller('clinic')
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles('SUPER_ADMIN')
+
 export class ClinicController {
   constructor(private readonly clinicService: ClinicService) {}
 
