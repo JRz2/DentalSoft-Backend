@@ -5,9 +5,32 @@ import { PrismaService } from 'src/prisma/prisma.service';
 
 @Injectable()
 export class ClinicService {
-  constructor(private readonly prisma: PrismaService) {}
-  create(createClinicDto: CreateClinicDto) {
-    return 'This action adds a new clinic';
+  constructor(private readonly prisma: PrismaService) { }
+
+  async create(createClinicDto: CreateClinicDto) {
+
+    const subdomain = createClinicDto.subdomain || this.generateSubdomain(createClinicDto.name);
+
+    return this.prisma.clinic.create({
+      data: {
+        name: createClinicDto.name,
+        address: createClinicDto.address,
+        phone: createClinicDto.phone,
+        email: createClinicDto.email,
+        subdomain: subdomain,
+        logoUrl: createClinicDto.logoUrl,
+        faviconUrl: createClinicDto.faviconUrl,
+      },
+    });
+  }
+
+  private generateSubdomain(name: string): string {
+    return name
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9]/g, '')
+      .substring(0, 50);
   }
 
   async findAll() {
