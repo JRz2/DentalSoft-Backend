@@ -19,6 +19,11 @@ async function bootstrap() {
     prefix: '/assets/',
   });
 
+  // Servir archivos subidos (uploads)
+  app.useStaticAssets(join(process.cwd(), 'uploads'), {
+    prefix: '/uploads/',
+  });
+
   // Habilitar los Cors
   app.enableCors({
     origin: 'http://localhost:5173', // URL de tu frontend
