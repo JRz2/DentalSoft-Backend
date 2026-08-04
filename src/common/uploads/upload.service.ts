@@ -5,7 +5,7 @@ import * as fs from 'fs';
 
 @Injectable()
 export class UploadService {
-    private readonly uploadDir = './uploads';
+    private readonly uploadDir = path.join(process.cwd(), 'uploads');
 
     constructor() {
         // Crear directorio de uploads si no existe
@@ -47,13 +47,17 @@ export class UploadService {
         fs.writeFileSync(filePath, file.buffer);
 
         // Devolver URL accesible
-        return `/uploads/${folder}/${filename}`;
+        const url = `/uploads/${folder}/${filename}`;
+        return url;
     }
 
     async deleteFile(fileUrl: string): Promise<boolean> {
         if (!fileUrl) return false;
 
-        const filePath = path.join('.', fileUrl);
+        // Convertir URL a ruta de archivo
+        const relativePath = fileUrl.replace('/uploads/', '');
+        const filePath = path.join(process.cwd(), 'uploads', relativePath);
+
         if (fs.existsSync(filePath)) {
             fs.unlinkSync(filePath);
             return true;

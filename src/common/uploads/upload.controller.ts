@@ -12,6 +12,30 @@ import { Multer } from 'multer';
 export class UploadController {
     constructor(private readonly uploadService: UploadService) { }
 
+    // Endpoint para subida temporal (antes de crear la clínica)
+    @Post('temp')
+    @Roles('ADMIN', 'SUPER_ADMIN')
+    @UseInterceptors(FileInterceptor('file'))
+    async uploadTemp(
+        @UploadedFile() file: Express.Multer.File,
+        @CurrentUser() user: { id: number; role: string; clinicId: number },
+    ) {
+        if (!file) {
+            throw new BadRequestException('No se recibió ningún archivo');
+        }
+
+        // Guardar en carpeta temporal con ID de usuario
+        const folder = `temp/users/${user.id}`;
+        const fileUrl = await this.uploadService.saveFile(file, folder);
+
+        return {
+            fileUrl,
+            temp: true,
+            message: 'Archivo subido temporalmente'
+        };
+    }
+
+    // Endpoint para logo con clinicId (para edición)
     @Post('logo')
     @Roles('ADMIN', 'SUPER_ADMIN')
     @UseInterceptors(FileInterceptor('file'))
@@ -20,6 +44,11 @@ export class UploadController {
         @CurrentUser() user: { id: number; role: string; clinicId: number },
         @Body('clinicId') clinicIdParam?: string,
     ) {
+
+        if (!file) {
+            throw new BadRequestException('No se recibió ningún archivo');
+        }
+
         let clinicId: number;
 
         if (user.role === 'SUPER_ADMIN') {

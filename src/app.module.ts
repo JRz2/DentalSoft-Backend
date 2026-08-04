@@ -12,11 +12,11 @@ import { AppointmentModule } from './modules/appointment/appointment.module';
 import { ClinicConfigModule } from './modules/clinic-config/clinic-config.module';
 import { ClinicModule } from './modules/clinic/clinic.module';
 import { TenantMiddleware } from './common/middleware/tenant.middleware';
-
+import { UploadModule } from './common/uploads/upload.module';
 @Module({
   imports: [
     ConfigModule.forRoot({
-      isGlobal: true, 
+      isGlobal: true,
       envFilePath: '.env',
     }),
     PrismaModule,
@@ -29,6 +29,7 @@ import { TenantMiddleware } from './common/middleware/tenant.middleware';
     AppointmentModule,
     ClinicConfigModule,
     ClinicModule,
+    UploadModule,
   ],
 })
 export class AppModule {
@@ -40,6 +41,7 @@ export class AppModule {
         { path: 'api/auth/register', method: RequestMethod.POST },
         { path: 'docs', method: RequestMethod.GET },
         { path: 'docs/(.*)', method: RequestMethod.GET },
+        { path: 'uploads/(.*)', method: RequestMethod.ALL },
       )
       .forRoutes({ path: '*', method: RequestMethod.ALL });
   }

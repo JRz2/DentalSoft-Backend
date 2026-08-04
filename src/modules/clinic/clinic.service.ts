@@ -2,24 +2,103 @@ import { Injectable } from '@nestjs/common';
 import { CreateClinicDto } from './dto/create-clinic.dto';
 import { UpdateClinicDto } from './dto/update-clinic.dto';
 import { PrismaService } from 'src/prisma/prisma.service';
-
+import path from 'path';
+import * as fs from 'fs';
 @Injectable()
 export class ClinicService {
   constructor(private readonly prisma: PrismaService) { }
 
+  private async moveTempImage(tempUrl: string, clinicId: number, type: 'logo' | 'favicon'): Promise<string> {
+    if (!tempUrl || !tempUrl.includes('/temp/')) {
+      return tempUrl; // No es temporal o no hay URL
+    }
+
+    // Extraer la ruta relativa del archivo
+    // Ejemplo: /uploads/temp/users/3/648e9f91-9d8f-45ae-ba2e-04959fab32da.png
+    const relativePath = tempUrl.replace('/uploads/', '');
+    const tempFilePath = path.join(process.cwd(), 'uploads', relativePath);
+
+    // Verificar si el archivo existe
+    if (!fs.existsSync(tempFilePath)) {
+      return tempUrl;
+    }
+
+    // Crear carpeta destino
+    const destFolder = `uploads/clinics/${clinicId}/${type}s`;
+    const destPath = path.join(process.cwd(), destFolder);
+
+    if (!fs.existsSync(destPath)) {
+      fs.mkdirSync(destPath, { recursive: true });
+    }
+
+    // Generar nombre único
+    const fileName = path.basename(tempFilePath);
+    const finalFilePath = path.join(destPath, fileName);
+
+    // Mover archivo
+    fs.renameSync(tempFilePath, finalFilePath);
+
+    // Retornar nueva URL
+    return `/uploads/clinics/${clinicId}/${type}s/${fileName}`;
+  }
+
   async create(createClinicDto: CreateClinicDto) {
+    // Primero crear la clínica sin imágenes temporales
+    const { logoUrl, faviconUrl, ...rest } = createClinicDto;
 
-    const subdomain = createClinicDto.subdomain || this.generateSubdomain(createClinicDto.name);
+    const clinic = await this.prisma.clinic.create({
+      data: rest,
+    });
 
-    return this.prisma.clinic.create({
+    // Ahora mover las imágenes temporales si existen
+    let finalLogoUrl = logoUrl;
+    let finalFaviconUrl = faviconUrl;
+
+    if (logoUrl && logoUrl.includes('/temp/')) {
+      finalLogoUrl = await this.moveTempImage(logoUrl, clinic.id, 'logo');
+    }
+
+    if (faviconUrl && faviconUrl.includes('/temp/')) {
+      finalFaviconUrl = await this.moveTempImage(faviconUrl, clinic.id, 'favicon');
+    }
+
+    // Actualizar la clínica con las URLs finales
+    if (finalLogoUrl !== logoUrl || finalFaviconUrl !== faviconUrl) {
+      await this.prisma.clinic.update({
+        where: { id: clinic.id },
+        data: {
+          logoUrl: finalLogoUrl,
+          faviconUrl: finalFaviconUrl,
+        },
+      });
+    }
+
+    return this.prisma.clinic.findUnique({
+      where: { id: clinic.id },
+    });
+  }
+
+  async update(id: number, updateClinicDto: UpdateClinicDto) {
+    const { logoUrl, faviconUrl, ...rest } = updateClinicDto;
+
+    let finalLogoUrl = logoUrl;
+    let finalFaviconUrl = faviconUrl;
+
+    // Mover imágenes temporales si existen
+    if (logoUrl && logoUrl.includes('/temp/')) {
+      finalLogoUrl = await this.moveTempImage(logoUrl, id, 'logo');
+    }
+
+    if (faviconUrl && faviconUrl.includes('/temp/')) {
+      finalFaviconUrl = await this.moveTempImage(faviconUrl, id, 'favicon');
+    }
+
+    return this.prisma.clinic.update({
+      where: { id },
       data: {
-        name: createClinicDto.name,
-        address: createClinicDto.address,
-        phone: createClinicDto.phone,
-        email: createClinicDto.email,
-        subdomain: subdomain,
-        logoUrl: createClinicDto.logoUrl,
-        faviconUrl: createClinicDto.faviconUrl,
+        ...rest,
+        logoUrl: finalLogoUrl,
+        faviconUrl: finalFaviconUrl,
       },
     });
   }
@@ -34,24 +113,43 @@ export class ClinicService {
   }
 
   async findAll() {
-    return this.prisma.clinic.findMany({
+    const clinics = await this.prisma.clinic.findMany({
       select: {
         id: true,
         name: true,
-        address: true,
+        subdomain: true,
         phone: true,
         email: true,
-        subdomain: true,
+        address: true,
+        logoUrl: true,
+        faviconUrl: true,
+        isActive: true,
+        createdAt: true,
+        updatedAt: true,
       },
     });
+    return clinics;
   }
 
-  findOne(id: number) {
-    return `This action returns a #${id} clinic`;
-  }
+  async findOne(id: number) {
+    const clinic = await this.prisma.clinic.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        name: true,
+        subdomain: true,
+        phone: true,
+        email: true,
+        address: true,
+        logoUrl: true,
+        faviconUrl: true,
+        isActive: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
 
-  update(id: number, updateClinicDto: UpdateClinicDto) {
-    return `This action updates a #${id} clinic`;
+    return clinic;
   }
 
   remove(id: number) {

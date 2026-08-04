@@ -10,7 +10,7 @@ import { Roles } from 'src/common/decorators/roles.decorator';
 @UseGuards(JwtAuthGuard, RolesGuard)
 
 export class ClinicController {
-  constructor(private readonly clinicService: ClinicService) {}
+  constructor(private readonly clinicService: ClinicService) { }
 
   @Post()
   create(@Body() createClinicDto: CreateClinicDto) {
@@ -23,8 +23,10 @@ export class ClinicController {
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.clinicService.findOne(+id);
+  @Roles('SUPER_ADMIN', 'ADMIN')
+  async findOne(@Param('id') id: string) {
+    const clinic = await this.clinicService.findOne(+id);
+    return clinic;
   }
 
   @Patch(':id')

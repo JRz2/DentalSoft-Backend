@@ -10,18 +10,15 @@ async function bootstrap() {
 
   app.setGlobalPrefix('api');
 
-  // Servir archivos estáticos desde la carpeta public
-  app.useStaticAssets(join(__dirname, '..', 'public'), {
-    prefix: '/assets/',
-  });
-
-  app.useStaticAssets(join(process.cwd(), 'public'), {
-    prefix: '/assets/',
-  });
-
-  // Servir archivos subidos (uploads)
+  const uploadsPath = join(process.cwd(), 'uploads');
+  //Servir archivos estáticos de la carpeta uploads (una sola vez)
   app.useStaticAssets(join(process.cwd(), 'uploads'), {
     prefix: '/uploads/',
+  });
+
+  // Servir archivos estáticos desde la carpeta public
+  app.useStaticAssets(join(process.cwd(), 'public'), {
+    prefix: '/assets/',
   });
 
   // Habilitar los Cors
