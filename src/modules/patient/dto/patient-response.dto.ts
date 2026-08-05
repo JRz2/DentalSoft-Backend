@@ -30,6 +30,9 @@ export class PatientResponseDto {
     @ApiPropertyOptional({ example: 'Calle 123', description: 'Dirección' })
     address?: string;
 
+    @ApiPropertyOptional({ example: 'https://example.com/photo.jpg', description: 'URL de la foto' })
+    photoUrl?: string;
+
     @ApiPropertyOptional({ description: 'Historia dental previa' })
     dentalHistory?: string;
 

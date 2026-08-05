@@ -18,6 +18,7 @@ export class PatientService {
       email: patient.email,
       birthDate: patient.birthDate,
       address: patient.address,
+      photoUrl: patient.photoUrl,
       dentalHistory: patient.dentalHistory,
       habits: patient.habits,
       medicalConditions: patient.medicalConditions,
@@ -85,8 +86,15 @@ export class PatientService {
     const patient = await this.prisma.$transaction(async (prisma) => {
       const newPatient = await prisma.patient.create({
         data: {
-          ...createPatientDto,
+          fullName: createPatientDto.fullName,
+          phoneNumber: createPatientDto.phoneNumber,
+          email: createPatientDto.email,
           birthDate: new Date(createPatientDto.birthDate),
+          address: createPatientDto.address,
+          photoUrl: createPatientDto.photoUrl,
+          dentalHistory: createPatientDto.dentalHistory,
+          habits: createPatientDto.habits,
+          medicalConditions: createPatientDto.medicalConditions,
           medicalRecordNum,
           registeredBy: doctorId,
           clinicId: targetClinicId,

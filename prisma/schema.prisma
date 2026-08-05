@@ -232,6 +232,7 @@ model Patient {
   birthDate         DateTime
   address           String?
   medicalRecordNum  String   @unique
+  photoUrl          String? 
   
   // Datos odontológicos
   dentalHistory     String?

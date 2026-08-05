@@ -78,4 +78,9 @@ export class CreatePatientDto {
     @IsInt()
     @IsOptional()
     clinicId?: number;
+
+    @ApiPropertyOptional({ description: 'URL de la foto del paciente' })
+    @IsString()
+    @IsOptional()
+    photoUrl?: string
 }
