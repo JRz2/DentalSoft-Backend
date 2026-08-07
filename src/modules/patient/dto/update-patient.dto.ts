@@ -1,7 +1,7 @@
 import { PartialType } from '@nestjs/mapped-types';
 import { CreatePatientDto } from './create-patient.dto';
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsUrl, IsOptional } from 'class-validator';
+import { IsString, IsOptional } from 'class-validator';
 
 export class UpdatePatientDto extends PartialType(CreatePatientDto) {
     @ApiPropertyOptional({
@@ -14,7 +14,7 @@ export class UpdatePatientDto extends PartialType(CreatePatientDto) {
         description: 'URL de la foto del paciente',
         example: 'https://example.com/photo.jpg',
     })
-    @IsUrl()
+    @IsString()
     @IsOptional()
     photoUrl?: string;
 }

@@ -98,10 +98,6 @@ export class UploadController {
         @CurrentUser() user: { id: number; role: string; clinicId: number },
         @Req() req: Request,
     ) {
-  console.log('📋 Headers:', req.headers);
-  console.log('📋 Content-Type:', req.headers['content-type']);
-  console.log('📸 File:', file);
-
         if (!file) {
             throw new BadRequestException('No se recibió ningún archivo');    
         }
