@@ -32,6 +32,7 @@ export class UsersService {
         email: createUserDto.email,
         password: hashedPassword,
         role: createUserDto.role,
+        photoUrl: createUserDto.photoUrl,
         specialty: createUserDto.specialty,
         licenseNumber: createUserDto.licenseNumber,
         phoneNumber: createUserDto.phoneNumber,
@@ -42,6 +43,7 @@ export class UsersService {
         name: true,
         email: true,
         role: true,
+        photoUrl: true,
         specialty: true,
         licenseNumber: true,
         phoneNumber: true,
@@ -114,6 +116,10 @@ export class UsersService {
       data.password = await this.hashPassword(updateUserDto.password);
     }
 
+    if (data.photoUrl == '') {
+      delete data.photoUrl;
+    }
+
     const user = await this.prisma.user.update({
       where: { id },
       data,
@@ -122,6 +128,7 @@ export class UsersService {
         name: true,
         email: true,
         role: true,
+        photoUrl: true,
         specialty: true,
         licenseNumber: true,
         phoneNumber: true,

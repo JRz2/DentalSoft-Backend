@@ -12,7 +12,7 @@ import type { Request } from 'express';
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class UploadController {
     constructor(
-        private readonly uploadService: UploadService, 
+        private readonly uploadService: UploadService,
         private readonly prisma: PrismaService
     ) { }
 
@@ -99,7 +99,7 @@ export class UploadController {
         @Req() req: Request,
     ) {
         if (!file) {
-            throw new BadRequestException('No se recibió ningún archivo');    
+            throw new BadRequestException('No se recibió ningún archivo');
         }
 
         const folder = `patients/${patientId}/photos`;
@@ -111,5 +111,67 @@ export class UploadController {
         })
 
         return { fileUrl, patientId, message: 'Photo uploaded successfully' };
+    }
+
+    @Post('user/:userId/photo')
+    @Roles('ADMIN', 'SUPER_ADMIN')
+    @UseInterceptors(FileInterceptor('file'))
+    async uploadUserPhotoById(
+        @UploadedFile() file: Express.Multer.File,
+        @Param('userId') userId: string,
+        @CurrentUser() user: { id: number; role: string; clinicId: number },
+    ) {
+        if (!file) {
+            throw new BadRequestException('No se recibió ningún archivo');
+        }
+
+        // Verificar que el usuario existe
+        const userExists = await this.prisma.user.findUnique({
+            where: { id: parseInt(userId) },
+        });
+
+        if (!userExists) {
+            throw new BadRequestException(`User with ID ${userId} not found`);
+        }
+
+        const folder = `users/${userId}/photos`;
+        const fileUrl = await this.uploadService.saveFile(file, folder);
+
+        await this.prisma.user.update({
+            where: { id: parseInt(userId) },
+            data: { photoUrl: fileUrl },
+        });
+
+        return {
+            fileUrl,
+            userId,
+            message: 'Foto de usuario actualizada correctamente'
+        };
+    }
+
+    @Post('user/photo')
+    @Roles('ADMIN', 'DOCTOR', 'RECEPTIONIST')
+    @UseInterceptors(FileInterceptor('file'))
+    async uploadMyPhoto(
+        @UploadedFile() file: Express.Multer.File,
+        @CurrentUser() user: { id: number; role: string; clinicId: number },
+    ) {
+        if (!file) {
+            throw new BadRequestException('No se recibió ningún archivo');
+        }
+
+        const folder = `users/${user.id}/photos`;
+        const fileUrl = await this.uploadService.saveFile(file, folder);
+
+        await this.prisma.user.update({
+            where: { id: user.id },
+            data: { photoUrl: fileUrl },
+        });
+
+        return {
+            fileUrl,
+            userId: user.id,
+            message: 'Tu foto de perfil fue actualizada correctamente'
+        };
     }
 }

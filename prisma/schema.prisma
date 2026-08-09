@@ -91,7 +91,8 @@ model User {
   email          String    @unique
   password       String
   role           Role      @default(DOCTOR)
-  
+  photoUrl       String? 
+
   // Datos profesionales
   specialty      String?   // Especialidad del doctor
   licenseNumber  String?   @unique // Registro médico

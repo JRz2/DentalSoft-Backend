@@ -35,4 +35,9 @@ export class CreateUserDto {
     @IsEnum(Role)
     @IsOptional()
     role?: Role;
+
+    @ApiPropertyOptional({ example: 'https://example.com/photo.jpg' })
+    @IsString()
+    @IsOptional()
+    photoUrl?: string
 }
