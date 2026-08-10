@@ -1,7 +1,7 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
-import { ValidationPipe } from '@nestjs/common';
+import { ValidationPipe, BadRequestException } from '@nestjs/common';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { join } from 'path';
 
@@ -37,6 +37,13 @@ async function bootstrap() {
     transformOptions: {
       enableImplicitConversion: true // Permite la conversión implícita de tipos (por ejemplo, string a number)
     },
+    /*exceptionFactory: (errors) => {
+      console.log('❌ ERRORES DE VALIDACIÓN:');
+      errors.forEach(error => {
+        console.log(`  - ${error.property}:`, error.constraints);
+      });
+      return new BadRequestException(errors);
+    }*/
   }));
 
   // ✅ Configuración de Swagger (ANTES del setGlobalPrefix)

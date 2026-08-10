@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, BadRequestException, UseInterceptors, UploadedFile } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
@@ -9,12 +9,19 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
 import { CurrentUser } from 'src/common/decorators/current-user.decorator';
 import { ChangePasswordDto } from './dto/change-password.dto';
-
+import { Multer } from 'multer';
+import { PrismaService } from '../../prisma/prisma.service';
+import type { Request } from 'express';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { UploadService } from 'src/common/uploads/upload.service';
 @UseGuards(AuthGuard('jwt'), RolesGuard)
 
 @Controller('users')
 export class UsersController {
-  constructor(private readonly usersService: UsersService) { }
+  constructor(
+    private readonly usersService: UsersService,
+    private readonly uploadService: UploadService,
+    private readonly prisma: PrismaService) { }
 
   @Get('profile')
   @UseGuards(JwtAuthGuard)
@@ -43,6 +50,7 @@ export class UsersController {
   @Post()
   @Roles('SUPER_ADMIN', 'ADMIN')
   create(@Body() createUserDto: CreateUserDto) {
+    console.log('📝 Datos recibidos para crear usuario:', JSON.stringify(createUserDto, null, 2));
     return this.usersService.create(createUserDto);
   }
 
@@ -65,5 +73,41 @@ export class UsersController {
   @Delete(':id')
   remove(@Param('id') id: string) {
     return this.usersService.remove(+id);
+  }
+
+  @Post(':userId/photo')
+  @Roles('ADMIN', 'SUPER_ADMIN')
+  @UseInterceptors(FileInterceptor('file'))
+  async uploadUserPhotoById(
+    @UploadedFile() file: Express.Multer.File,
+    @Param('userId') userId: string,
+    @CurrentUser() user: { id: number; role: string; clinicId: number },
+  ) {
+    if (!file) {
+      throw new BadRequestException('No se recibió ningún archivo');
+    }
+
+    // Verificar que el usuario existe
+    const userExists = await this.prisma.user.findUnique({
+      where: { id: parseInt(userId) },
+    });
+
+    if (!userExists) {
+      throw new BadRequestException(`User with ID ${userId} not found`);
+    }
+
+    const folder = `users/${userId}/photos`;
+    const fileUrl = await this.uploadService.saveFile(file, folder);
+
+    await this.prisma.user.update({
+      where: { id: parseInt(userId) },
+      data: { photoUrl: fileUrl },
+    });
+
+    return {
+      fileUrl,
+      userId,
+      message: 'Foto de usuario actualizada correctamente'
+    };
   }
 }

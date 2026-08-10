@@ -95,7 +95,7 @@ model User {
 
   // Datos profesionales
   specialty      String?   // Especialidad del doctor
-  licenseNumber  String?   @unique // Registro médico
+  licenseNumber  String?   // Registro médico
   
   // Estado y seguridad
   isActive       Boolean   @default(true)
@@ -124,6 +124,7 @@ model User {
   @@unique([clinicId, email]) 
   @@index([email])
   @@index([role])
+  @@unique([licenseNumber])  // PostgreSQL ignora NULL por defecto
   @@index([isActive])
   @@index([deletedAt])
 }

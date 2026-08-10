@@ -1,11 +1,12 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEmail, IsString, IsOptional, MinLength, IsEnum } from 'class-validator';
+import { IsEmail, IsString, IsOptional, MinLength, IsEnum, IsInt, IsPositive } from 'class-validator';
 import { Role } from '@prisma/client';
+import { Type } from 'class-transformer';
 
 export class CreateUserDto {
-    @ApiProperty({ example: 'John Doe'})
+    @ApiProperty({ example: 'John Doe' })
     @IsString()
-    name: string; 
+    name: string;
 
     @ApiProperty({ example: 'doctor@clinica.com' })
     @IsEmail()
@@ -40,4 +41,10 @@ export class CreateUserDto {
     @IsString()
     @IsOptional()
     photoUrl?: string
+
+    @ApiProperty({ description: 'ID de la clínica a la que pertenece el usuario' })
+    @IsInt()
+    @IsPositive()
+    @Type(() => Number)
+    clinicId?: string
 }

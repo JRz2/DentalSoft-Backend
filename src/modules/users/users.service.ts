@@ -24,6 +24,19 @@ export class UsersService {
       throw new ConflictException('User with this email already exists');
     }
 
+    const clinicId = Number(createUserDto.clinicId);
+
+    if (isNaN(clinicId) || clinicId <= 0) {
+      throw new BadRequestException('Invalid clinicId');
+    }
+
+    const clinic = await this.prisma.clinic.findUnique({
+      where: { id: clinicId },
+    });
+
+    if (!clinic) {
+      throw new BadRequestException(`Clinic with ID ${clinicId} not found`);
+    }
     const hashedPassword = await this.hashPassword(createUserDto.password);
 
     const user = await this.prisma.user.create({
@@ -32,6 +45,7 @@ export class UsersService {
         email: createUserDto.email,
         password: hashedPassword,
         role: createUserDto.role,
+        clinicId: clinicId,
         photoUrl: createUserDto.photoUrl,
         specialty: createUserDto.specialty,
         licenseNumber: createUserDto.licenseNumber,
@@ -64,6 +78,7 @@ export class UsersService {
         specialty: true,
         licenseNumber: true,
         phoneNumber: true,
+        photoUrl: true,
         isActive: true,
         clinic: {
           select: {
@@ -89,6 +104,7 @@ export class UsersService {
         specialty: true,
         licenseNumber: true,
         phoneNumber: true,
+        photoUrl: true,
         isActive: true,
         createdAt: true,
         updatedAt: true,
@@ -118,6 +134,10 @@ export class UsersService {
 
     if (data.photoUrl == '') {
       delete data.photoUrl;
+    }
+
+    if (data.licenseNumber === '') {
+      data.licenseNumber = null;
     }
 
     const user = await this.prisma.user.update({
