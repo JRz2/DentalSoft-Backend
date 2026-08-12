@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, ParseIntPipe } from '@nestjs/common';
 import { ClinicService } from './clinic.service';
 import { CreateClinicDto } from './dto/create-clinic.dto';
 import { UpdateClinicDto } from './dto/update-clinic.dto';
@@ -35,7 +35,14 @@ export class ClinicController {
   }
 
   @Delete(':id')
-  remove(@Param('id') id: string) {
+  @Roles('SUPER_ADMIN')
+  remove(@Param('id', ParseIntPipe) id: string) {
     return this.clinicService.remove(+id);
+  }
+
+  @Patch(':id/reactivate')
+  @Roles('SUPER_ADMIN')
+  reactivate(@Param('id', ParseIntPipe) id: number) {
+    return this.clinicService.reactivate(id);
   }
 }

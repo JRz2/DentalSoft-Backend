@@ -150,7 +150,7 @@ export class UploadController {
     }
 
     @Post('user/photo')
-    @Roles('ADMIN', 'DOCTOR', 'RECEPTIONIST')
+    @Roles('SUPER_ADMIN','ADMIN', 'DOCTOR', 'RECEPTIONIST')
     @UseInterceptors(FileInterceptor('file'))
     async uploadMyPhoto(
         @UploadedFile() file: Express.Multer.File,

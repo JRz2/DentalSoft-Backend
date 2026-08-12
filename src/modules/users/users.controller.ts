@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, BadRequestException, UseInterceptors, UploadedFile } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, BadRequestException, UseInterceptors, UploadedFile, ParseIntPipe } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
@@ -14,6 +14,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import type { Request } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { UploadService } from 'src/common/uploads/upload.service';
+import { AdminChangePasswordDto } from './dto/admin-change-password.dto';
 @UseGuards(AuthGuard('jwt'), RolesGuard)
 
 @Controller('users')
@@ -47,6 +48,16 @@ export class UsersController {
     return this.usersService.changePassword(user.id, changePasswordDto);
   }
 
+  @Post(':userId/change-password')
+  @Roles('SUPER_ADMIN', 'ADMIN')
+  async changePasswordByAdmin(
+    @Param('userId', ParseIntPipe) userId: number,
+    @Body() dto: AdminChangePasswordDto,
+    @CurrentUser() user: { id: number; role: string; clinicId: number },
+  ) {
+    return this.usersService.changePasswordByAdmin(userId, dto, user);
+  }
+
   @Post()
   @Roles('SUPER_ADMIN', 'ADMIN')
   create(@Body() createUserDto: CreateUserDto) {
@@ -71,8 +82,21 @@ export class UsersController {
   }
 
   @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.usersService.remove(+id);
+  @Roles('SUPER_ADMIN', 'ADMIN')
+  remove(@Param('id', ParseIntPipe) id: number) {
+    return this.usersService.remove(id);
+  }
+
+  @Patch(':id/reactivate')
+  @Roles('SUPER_ADMIN', 'ADMIN')
+  reactivate(@Param('id', ParseIntPipe) id: number) {
+    return this.usersService.reactivate(id);
+  }
+
+  @Delete(':id/hard')
+  @Roles('SUPER_ADMIN')
+  hardDelete(@Param('id', ParseIntPipe) id: number) {
+    return this.usersService.hardDelete(id);
   }
 
   @Post(':userId/photo')

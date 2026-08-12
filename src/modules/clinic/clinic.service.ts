@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { CreateClinicDto } from './dto/create-clinic.dto';
 import { UpdateClinicDto } from './dto/update-clinic.dto';
 import { PrismaService } from 'src/prisma/prisma.service';
@@ -114,6 +114,7 @@ export class ClinicService {
 
   async findAll() {
     const clinics = await this.prisma.clinic.findMany({
+      orderBy: { id: 'asc' },
       select: {
         id: true,
         name: true,
@@ -152,7 +153,41 @@ export class ClinicService {
     return clinic;
   }
 
-  remove(id: number) {
-    return `This action removes a #${id} clinic`;
+  async remove(id: number) {
+    await this.findOne(id);
+
+    return this.prisma.clinic.update({
+      where: { id },
+      data: {
+        isActive: false,
+        updatedAt: new Date(),
+      },
+    });
+  }
+
+  async reactivate(id: number) {
+    const clinic = await this.prisma.clinic.findUnique({
+      where: { id },
+    });
+
+    if (!clinic) {
+      throw new NotFoundException(`Clinic with ID ${id} not found`);
+    }
+
+    return this.prisma.clinic.update({
+      where: { id },
+      data: {
+        isActive: true,
+        updatedAt: new Date(),
+      },
+    });
+  }
+
+  async hardDelete(id: number) {
+    const clinic = await this.findOne(id);
+
+    return this.prisma.clinic.delete({
+      where: { id },
+    });
   }
 }
