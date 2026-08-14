@@ -25,4 +25,9 @@ export class CreateTreatmentDto {
     @IsEnum(TreatmentStatus)
     @IsOptional()
     status?: TreatmentStatus;
+
+    @ApiPropertyOptional({ example: 150000, description: 'Costo total del tratamiento' })
+    @IsInt()
+    @Min(1)
+    totalCost?: number
 }

@@ -45,6 +45,22 @@ enum AppointmentStatus {
   NO_SHOW
 }
 
+enum PaymentStatus {
+  UNPAID
+  PARTIAL
+  PAID
+  REFUNDED
+  CANCELLED
+}
+
+enum PaymentMethodType{
+  CASH
+  CARD
+  TRANSFER
+  INSURANCE
+  OTHER
+}
+
 // ==================== MULTI-TENANT ====================
 model Clinic {
   id                Int      @id @default(autoincrement())
@@ -76,7 +92,7 @@ model Clinic {
   auditLogs         AuditLog[]
   clinicalHistories ClinicalHistory[] 
   treatmentSessions TreatmentSession[] 
-
+  payments          Payment[]
   
   @@index([subdomain])
   @@map("clinics")
@@ -120,7 +136,8 @@ model User {
   loginAttempts  LoginAttempt[]
   patients       Patient[]   // Doctores que registraron pacientes
   appointments   Appointment[]
-  
+  payments       Payment[]
+
   @@unique([clinicId, email]) 
   @@index([email])
   @@index([role])
@@ -298,16 +315,25 @@ model Treatment {
   startDate         DateTime @default(now())
   endDate           DateTime?
   
+  totalCost         Decimal? @db.Decimal(10, 2)   
+  discount          Decimal? @default(0) @db.Decimal(10, 2)   
+  finalAmount       Decimal? @db.Decimal(10, 2) 
+  amountPaid        Decimal? @default(0) @db.Decimal(10, 2)
+  remainingBalance  Decimal? @db.Decimal(10, 2)
+  paymentStatus     PaymentStatus @default(UNPAID)
+
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
   
   // Relaciones
   sessions          TreatmentSession[]
   appointments      Appointment[] 
-  
+  payments          Payment[]
+
   @@index([clinicId])
   @@index([clinicalHistoryId])
   @@index([status])
+  @@index([paymentStatus])
 }
 
 model TreatmentSession {
@@ -334,6 +360,33 @@ model TreatmentSession {
   @@index([treatmentId])
   @@index([appointmentId])
   @@index([sessionNumber])
+}
+
+model Payment {
+  id                Int      @id @default(autoincrement())
+  treatmentId       Int
+  treatment         Treatment @relation(fields: [treatmentId], references: [id], onDelete: Cascade)
+  clinicId          Int
+  clinic            Clinic   @relation(fields: [clinicId], references: [id])
+  
+  amount            Decimal  @db.Decimal(10, 2)
+  paymentDate       DateTime @default(now())
+  paymentMethod     PaymentMethodType
+  reference         String?  // Número de voucher, transferencia, etc.
+  notes             String?
+  
+  // Auditoría
+  registeredBy      Int
+  user              User     @relation(fields: [registeredBy], references: [id])
+  ipAddress         String?
+  userAgent         String?
+  
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  @@index([treatmentId])
+  @@index([clinicId])
+  @@index([paymentDate])
 }
 
 model Appointment {

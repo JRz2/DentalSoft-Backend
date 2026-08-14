@@ -1,9 +1,11 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { CreateTreatmentDto } from './dto/create-treatment.dto';
 import { UpdateTreatmentDto } from './dto/update-treatment.dto';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { TreatmentResponseDto } from './dto/treatment-response.dto';
-import { Role } from '@prisma/client';
+import { PaymentStatus, Role } from '@prisma/client';
+import { RegisterPaymentDto } from './dto/register-payment.dto';
+import { UpdateCostDto } from './dto/update-cost.dto';
 
 
 @Injectable()
@@ -24,6 +26,12 @@ export class TreatmentService {
       createdAt: treatment.createdAt,
       updatedAt: treatment.updatedAt,
       sessions: treatment.sessions,
+      totalCost: treatment.totalCost,
+      discount: treatment.discount,
+      finalAmount: treatment.finalAmount,
+      amountPaid: treatment.amountPaid,
+      remainingBalance: treatment.remainingBalance,
+      paymentStatus: treatment.paymentStatus,
       patient: treatment.clinicalHistory?.patient ? {
         id: treatment.clinicalHistory.patient.id,
         fullName: treatment.clinicalHistory.patient.fullName,
@@ -48,6 +56,10 @@ export class TreatmentService {
       throw new NotFoundException(`Clinical history with ID ${clinicalHistoryId} not found`);
     }
 
+    const totalCost = createDto.totalCost || null;
+    const finalAmount = totalCost || 0;
+    const remainingBalance = totalCost || 0;
+
     const treatment = await this.prisma.$transaction(async (prisma) => {
       const newTreatment = await prisma.treatment.create({
         data: {
@@ -58,6 +70,11 @@ export class TreatmentService {
           estimatedSessions: createDto.estimatedSessions,
           status: createDto.status || 'PLANNED',
           clinicId: clinicId,
+          totalCost,
+          finalAmount: finalAmount,
+          amountPaid: 0,
+          remainingBalance: remainingBalance,
+          paymentStatus: totalCost ? 'UNPAID' : 'UNPAID',
         },
         include: {
           sessions: true,
@@ -233,5 +250,221 @@ export class TreatmentService {
     });
 
     return treatments.map((t) => this.ToResponseDto(t));
+  }
+
+  async registerPayment(
+    treatmentId: number,
+    paymentDto: RegisterPaymentDto,
+    userId: number,
+    clinicId: number,
+    ipAddress?: string,
+    userAgent?: string,
+  ) {
+    // 1. Verificar que el tratamiento existe
+    const treatment = await this.prisma.treatment.findUnique({
+      where: { id: treatmentId },
+      include: { payments: true },
+    });
+
+    if (!treatment) {
+      throw new NotFoundException(`Treatment with ID ${treatmentId} not found`);
+    }
+
+    // 2. Verificar que el tratamiento no está cancelado
+    if (treatment.status === 'CANCELLED') {
+      throw new BadRequestException('No se pueden registrar pagos en un tratamiento cancelado');
+    }
+
+    const remaining = treatment.remainingBalance ? Number(treatment.remainingBalance) : 0;
+
+    // 3. Verificar que el monto no exceda lo que falta
+    if (paymentDto.amount > remaining) {
+      throw new BadRequestException(
+        `El monto excede el saldo pendiente: ${remaining}`
+      );
+    }
+
+    // 4. Registrar el pago en transacción
+    const result = await this.prisma.$transaction(async (prisma) => {
+      // 4.1 Crear el pago
+      const payment = await prisma.payment.create({
+        data: {
+          treatmentId,
+          clinicId,
+          amount: paymentDto.amount,
+          paymentMethod: paymentDto.paymentMethod,
+          reference: paymentDto.reference,
+          notes: paymentDto.notes,
+          registeredBy: userId,
+          ipAddress,
+          userAgent,
+        },
+      });
+
+      // 4.2 Calcular nuevos montos
+      const currentAmountPaid = treatment.amountPaid ? Number(treatment.amountPaid) : 0;
+      const currentTotalCost = treatment.totalCost ? Number(treatment.totalCost) : 0;
+
+      const newAmountPaid = currentAmountPaid + paymentDto.amount;
+      const newRemaining = currentTotalCost - newAmountPaid;
+
+      let paymentStatus: PaymentStatus;
+
+      if (newRemaining <= 0) {
+        paymentStatus = 'PAID';
+      } else if (newAmountPaid > 0) {
+        paymentStatus = 'PARTIAL';
+      } else {
+        paymentStatus = 'UNPAID';
+      }
+
+      // 4.3 Actualizar el tratamiento
+      const updatedTreatment = await prisma.treatment.update({
+        where: { id: treatmentId },
+        data: {
+          amountPaid: newAmountPaid,
+          remainingBalance: newRemaining,
+          paymentStatus: paymentStatus,
+        },
+      });
+
+      // 4.4 Registrar auditoría
+      await prisma.auditLog.create({
+        data: {
+          userId,
+          action: 'REGISTER_PAYMENT',
+          entity: 'Treatment',
+          entityId: treatmentId.toString(),
+          newValue: { payment, treatment: updatedTreatment },
+          clinicId,
+        },
+      });
+
+      return { payment, treatment: updatedTreatment };
+    });
+
+    return {
+      message: 'Pago registrado exitosamente',
+      payment: result.payment,
+      treatment: {
+        id: result.treatment.id,
+        totalCost: result.treatment.totalCost,
+        amountPaid: result.treatment.amountPaid,
+        remainingBalance: result.treatment.remainingBalance,
+        paymentStatus: result.treatment.paymentStatus,
+      },
+    };
+  }
+
+  async updateCost(
+    treatmentId: number,
+    costDto: UpdateCostDto,
+    userId: number,
+    clinicId: number,
+  ) {
+    const existingTreatment = await this.prisma.treatment.findUnique({
+      where: { id: treatmentId },
+    });
+
+    if (!existingTreatment) {
+      throw new NotFoundException(`Treatment with ID ${treatmentId} not found`);
+    }
+
+    const currentAmountPaid = existingTreatment.amountPaid
+      ? Number(existingTreatment.amountPaid)
+      : 0;
+
+    const finalAmount = costDto.totalCost - (costDto.discount || 0);
+    const newRemaining = finalAmount - currentAmountPaid;
+
+    if (newRemaining < 0) {
+      throw new BadRequestException(
+        `El descuento no puede ser mayor al costo total. Costo: ${costDto.totalCost}, Pagado: ${currentAmountPaid}`
+      );
+    }
+
+    const updatedTreatment = await this.prisma.$transaction(async (prisma) => {
+      let paymentStatus: PaymentStatus;
+      if (newRemaining <= 0) {
+        paymentStatus = 'PAID';
+      } else if (currentAmountPaid > 0) {
+        paymentStatus = 'PARTIAL';
+      } else {
+        paymentStatus = 'UNPAID';
+      }
+
+      const treatment = await prisma.treatment.update({
+        where: { id: treatmentId },
+        data: {
+          totalCost: costDto.totalCost,
+          discount: costDto.discount || 0,
+          finalAmount: finalAmount,
+          remainingBalance: newRemaining,
+          paymentStatus: paymentStatus,
+        },
+      });
+
+      await prisma.auditLog.create({
+        data: {
+          userId,
+          action: 'UPDATE_TREATMENT_COST',
+          entity: 'Treatment',
+          entityId: treatmentId.toString(),
+          newValue: treatment,
+          clinicId,
+        },
+      });
+
+      return treatment;
+    });
+
+    return updatedTreatment;
+  }
+
+  async getPaymentStatus(treatmentId: number) {
+    const treatment = await this.prisma.treatment.findUnique({
+      where: { id: treatmentId },
+      include: {
+        payments: {
+          orderBy: { paymentDate: 'desc' },
+          include: {
+            user: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!treatment) {
+      throw new NotFoundException(`Treatment with ID ${treatmentId} not found`);
+    }
+
+    return {
+      treatmentId: treatment.id,
+      treatmentName: treatment.name,
+      totalCost: treatment.totalCost ? Number(treatment.totalCost) : 0,
+      discount: treatment.discount ? Number(treatment.discount) : 0,
+      finalAmount: treatment.finalAmount ? Number(treatment.finalAmount) : 0,
+      amountPaid: treatment.amountPaid ? Number(treatment.amountPaid) : 0,
+      remainingBalance: treatment.remainingBalance ? Number(treatment.remainingBalance) : 0,
+      paymentStatus: treatment.paymentStatus,
+      payments: treatment.payments.map((p) => ({
+        id: p.id,
+        amount: Number(p.amount),
+        paymentMethod: p.paymentMethod,
+        paymentDate: p.paymentDate,
+        reference: p.reference,
+        notes: p.notes,
+        registeredBy: p.user.name,
+      })),
+      summary: {
+        totalPayments: treatment.payments.length,
+        totalAmountPaid: treatment.amountPaid ? Number(treatment.amountPaid) : 0,
+      },
+    };
   }
 }
