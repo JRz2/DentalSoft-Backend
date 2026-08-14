@@ -12,13 +12,13 @@ import { CurrentUser } from 'src/common/decorators/current-user.decorator';
 export class ClinicalHistoryController {
   constructor(private readonly clinicalHistoryService: ClinicalHistoryService) { }
 
-  @Get(':patientId')
+  @Get('patient/:patientId')
   @Roles('ADMIN', 'DOCTOR', 'RECEPTIONIST')
   async findByPatientId(@Param('patientId', ParseIntPipe) patientId: number) {
     return this.clinicalHistoryService.findByPatientId(patientId);
   }
 
-  @Put(':patientId')
+  @Put('patient/:patientId')
   @Roles('SUPER_ADMIN', 'ADMIN', 'DOCTOR')
   async update(
     @Param('patientId', ParseIntPipe) patientId: number,
@@ -29,28 +29,31 @@ export class ClinicalHistoryController {
       patientId,
       updateDto,
       user.id,
-      user.clinicId,  
+      user.clinicId,
     );
   }
 
-
   @Post()
+  @Roles('ADMIN', 'DOCTOR')
   create(@Body() createClinicalHistoryDto: CreateClinicalHistoryDto) {
     return this.clinicalHistoryService.create(createClinicalHistoryDto);
   }
 
   @Get()
+  @Roles('ADMIN', 'DOCTOR', 'RECEPTIONIST')
   findAll() {
     return this.clinicalHistoryService.findAll();
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.clinicalHistoryService.findOne(+id);
+  @Roles('ADMIN', 'DOCTOR', 'RECEPTIONIST')
+  findOne(@Param('id', ParseIntPipe) id: number) {
+    return this.clinicalHistoryService.findOne(id);
   }
 
   @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.clinicalHistoryService.remove(+id);
+  @Roles('ADMIN')
+  remove(@Param('id', ParseIntPipe) id: number) {
+    return this.clinicalHistoryService.remove(id);
   }
 }

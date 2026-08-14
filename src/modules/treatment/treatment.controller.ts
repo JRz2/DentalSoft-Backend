@@ -6,20 +6,18 @@ import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
 import { RolesGuard } from 'src/common/guards/roles.guard';
 import { Roles } from 'src/common/decorators/roles.decorator';
 import { CurrentUser } from 'src/common/decorators/current-user.decorator';
-import { Patient } from '../patient/entities/patient.entity';
-
 
 @Controller('treatment')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class TreatmentController {
-  constructor(private readonly treatmentService: TreatmentService) {}
+  constructor(private readonly treatmentService: TreatmentService) { }
 
   @Post(':clinicalHistoryId')
   @Roles('ADMIN', 'DOCTOR')
   create(
     @Param('clinicalHistoryId', ParseIntPipe) clinicalHistoryId: number,
     @Body() createTreatmentDto: CreateTreatmentDto,
-    @CurrentUser() user: {id: number; role: string; clinicId: number},
+    @CurrentUser() user: { id: number; role: string; clinicId: number },
   ) {
     return this.treatmentService.create(createTreatmentDto, clinicalHistoryId, user.id, user.clinicId);
   }
@@ -39,9 +37,9 @@ export class TreatmentController {
   @Put(':id')
   @Roles('ADMIN', 'DOCTOR', 'RECEPTIONIST')
   update(
-    @Param('id', ParseIntPipe) id: string, 
+    @Param('id', ParseIntPipe) id: string,
     @Body() updateTreatmentDto: UpdateTreatmentDto,
-    @CurrentUser() user: {id: number, role: string; clinicId: number},
+    @CurrentUser() user: { id: number, role: string; clinicId: number },
   ) {
     return this.treatmentService.update(+id, updateTreatmentDto, user.id, user.clinicId);
   }
@@ -54,4 +52,13 @@ export class TreatmentController {
   ) {
     return this.treatmentService.cancel(id, user.id, user.role as any, user.clinicId);
   }
+
+  @Get()
+  @Roles('ADMIN', 'DOCTOR', 'RECEPTIONIST')
+  async findAllByClinic(
+    @CurrentUser() user: { id: number; role: string; clinicId: number },
+  ) {
+    return this.treatmentService.findAllByClinic(user.clinicId);
+  }
+  
 }

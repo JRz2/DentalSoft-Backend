@@ -163,8 +163,8 @@ model LoginAttempt {
 
 model AuditLog {
   id        Int      @id @default(autoincrement())
-  clinicId  Int     
-  clinic    Clinic   @relation(fields: [clinicId], references: [id]) 
+  clinicId  Int?     
+  clinic    Clinic?   @relation(fields: [clinicId], references: [id]) 
   userId    Int?
   user      User?    @relation(fields: [userId], references: [id])
   action    String

@@ -297,19 +297,26 @@ export class UsersService {
       },
     });
 
-    await this.prisma.auditLog.create({
-      data: {
-        userId: currentUser.id,
-        action: 'ADMIN_CHANGE_PASSWORD',
-        entity: 'User',
-        entityId: userId.toString(),
-        newValue: {
-          changedBy: currentUser.id,
-          changedByRole: currentUser.role,
-          targetUser: targetUser.email,
-        },
-        clinicId: currentUser.clinicId,
+    const auditData: any = {
+      userId: currentUser.id,
+      action: 'ADMIN_CHANGE_PASSWORD',
+      entity: 'User',
+      entityId: userId.toString(),
+      newValue: {
+        changedBy: currentUser.id,
+        changedByRole: currentUser.role,
+        targetUser: targetUser.email,
       },
+    };
+
+    if (currentUser.clinicId) {
+      auditData.clinic = {
+        connect: { id: currentUser.clinicId },
+      };
+    }
+
+    await this.prisma.auditLog.create({
+      data: auditData,
     });
 
     return {

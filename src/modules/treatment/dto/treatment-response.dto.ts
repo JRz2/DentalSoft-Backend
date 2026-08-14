@@ -36,5 +36,23 @@ export class TreatmentResponseDto {
 
     @ApiPropertyOptional({ description: 'Sesiones del tratamiento' })
     sessions?: any[];
-
+    
+    @ApiPropertyOptional({
+        description: 'Datos del paciente asociado',
+        type: 'object',
+        properties: {
+            id: { type: 'number' },
+            fullName: { type: 'string' },
+            phoneNumber: { type: 'string' },
+            email: { type: 'string' },
+            medicalRecordNum: { type: 'string' },
+        },
+    })
+    patient?: {
+        id: number;
+        fullName: string;
+        phoneNumber: string;
+        email?: string;
+        medicalRecordNum: string;
+    };
 }

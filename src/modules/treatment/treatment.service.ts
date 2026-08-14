@@ -8,7 +8,7 @@ import { Role } from '@prisma/client';
 
 @Injectable()
 export class TreatmentService {
-  constructor (private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) { }
 
   private ToResponseDto(treatment: any) {
     return {
@@ -24,6 +24,13 @@ export class TreatmentService {
       createdAt: treatment.createdAt,
       updatedAt: treatment.updatedAt,
       sessions: treatment.sessions,
+      patient: treatment.clinicalHistory?.patient ? {
+        id: treatment.clinicalHistory.patient.id,
+        fullName: treatment.clinicalHistory.patient.fullName,
+        phoneNumber: treatment.clinicalHistory.patient.phoneNumber,
+        email: treatment.clinicalHistory.patient.email,
+        medicalRecordNum: treatment.clinicalHistory.patient.medicalRecordNum,
+      } : undefined,
     };
   }
 
@@ -41,7 +48,7 @@ export class TreatmentService {
       throw new NotFoundException(`Clinical history with ID ${clinicalHistoryId} not found`);
     }
 
-    const treatment = await this.prisma.$transaction( async (prisma) => {
+    const treatment = await this.prisma.$transaction(async (prisma) => {
       const newTreatment = await prisma.treatment.create({
         data: {
           clinicalHistoryId,
@@ -68,9 +75,9 @@ export class TreatmentService {
         },
       });
 
-      return newTreatment;  
+      return newTreatment;
     });
-    
+
     return this.ToResponseDto(treatment);
   }
 
@@ -134,64 +141,97 @@ export class TreatmentService {
   }
 
   async update(
-    id: number, 
+    id: number,
     updateDto: UpdateTreatmentDto,
     clinicId: number,
     userId: number): Promise<TreatmentResponseDto> {
-      await this.findOne(id);
-
-      const updatedTreatment = await this.prisma.$transaction(async (primsa) => {
-        const treatment = await primsa.treatment.update({
-          where: {id},
-          data: updateDto,
-          include: { sessions: true},
-        });
-
-        await primsa.auditLog.create({
-          data: {
-            userId,
-            action: 'UPDATE_TREATMENT',
-            entity: 'treatment',
-            entityId: id.toString(),
-            newValue: treatment,
-            clinicId: clinicId,
-          },
-        });
-
-        return treatment;
-      });
-      
-      return this.ToResponseDto(updatedTreatment);
-  }
-
-  async cancel(id: number, userId: number, userRole: Role, clinicId: number): Promise<{message: string}>{
     await this.findOne(id);
 
-    if(userRole !=='ADMIN' && userRole !=='DOCTOR'){
+    const updatedTreatment = await this.prisma.$transaction(async (primsa) => {
+      const treatment = await primsa.treatment.update({
+        where: { id },
+        data: updateDto,
+        include: { sessions: true },
+      });
+
+      await primsa.auditLog.create({
+        data: {
+          userId,
+          action: 'UPDATE_TREATMENT',
+          entity: 'treatment',
+          entityId: id.toString(),
+          newValue: treatment,
+          clinicId: clinicId,
+        },
+      });
+
+      return treatment;
+    });
+
+    return this.ToResponseDto(updatedTreatment);
+  }
+
+  async cancel(id: number, userId: number, userRole: Role, clinicId: number): Promise<{ message: string }> {
+    await this.findOne(id);
+
+    if (userRole !== 'ADMIN' && userRole !== 'DOCTOR') {
       throw new ForbiddenException('Only ADMNI or DOCTOR can cancel treatment');
     }
 
-    const cancellTreatment = await this.prisma.$transaction(async (prisma) =>{
+    const cancellTreatment = await this.prisma.$transaction(async (prisma) => {
       const treatment = await prisma.treatment.update({
-        where: {id},
-        data: {status: 'CANCELLED', endDate: new Date()},
+        where: { id },
+        data: { status: 'CANCELLED', endDate: new Date() },
       });
 
-    await prisma.auditLog.create({
-      data: {
-        userId,
-        action: 'CANCEL_TREATMEN',
-        entity: 'treatment',
-        entityId: id.toString(),
-        oldValue: treatment,
-        clinicId: clinicId,
-      },
+      await prisma.auditLog.create({
+        data: {
+          userId,
+          action: 'CANCEL_TREATMEN',
+          entity: 'treatment',
+          entityId: id.toString(),
+          oldValue: treatment,
+          clinicId: clinicId,
+        },
+      });
+
+      return treatment;
     });
 
-    return treatment;
-  });
+    return { message: 'Treatment cancelled successfully' };
+  }
 
-  return { message: 'Treatment cancelled successfully' };
-}
+  async findAllByClinic(clinicId: number): Promise<TreatmentResponseDto[]> {
+    const treatments = await this.prisma.treatment.findMany({
+      where: { clinicId },
+      include: {
+        clinicalHistory: {
+          include: {
+            patient: {
+              select: {
+                id: true,
+                fullName: true,
+                medicalRecordNum: true,
+              },
+            },
+          },
+        },
+        sessions: {
+          orderBy: { sessionNumber: 'asc' },
+          include: {
+            appointment: {
+              select: {
+                id: true,
+                appointmentDate: true,
+                status: true,
+              },
+            },
+          },
+        },
+      },
+      orderBy: { id: 'desc' },
+    });
 
+    return treatments.map((t) => this.ToResponseDto(t));
+  }
 }
