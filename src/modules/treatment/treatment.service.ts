@@ -47,6 +47,8 @@ export class TreatmentService {
     clinicalHistoryId: number,
     userId: number,
     clinicId: number,
+    ipAddress?: string,
+    userAgent?: string,
   ): Promise<TreatmentResponseDto> {
     const clinicalHistory = await this.prisma.clinicalHistory.findUnique({
       where: { id: clinicalHistoryId },
@@ -56,11 +58,27 @@ export class TreatmentService {
       throw new NotFoundException(`Clinical history with ID ${clinicalHistoryId} not found`);
     }
 
-    const totalCost = createDto.totalCost || null;
-    const finalAmount = totalCost || 0;
-    const remainingBalance = totalCost || 0;
+    const totalCost = createDto.totalCost || 0;
+    const paymentAmount = createDto.paymentAmount || 0;
 
-    const treatment = await this.prisma.$transaction(async (prisma) => {
+    const hasPayment = paymentAmount > 0 && createDto.paymentMethod;
+
+    const amountPaid = hasPayment ? paymentAmount : 0;
+    const remainingBalance = hasPayment ? (totalCost - paymentAmount) : (totalCost || 0);
+
+    let paymentStatus: PaymentStatus;
+    if (!totalCost) {
+      paymentStatus = 'UNPAID';
+    } else if (hasPayment && remainingBalance <= 0) {
+      paymentStatus = 'PAID';
+    } else if (hasPayment && remainingBalance > 0) {
+      paymentStatus = 'PARTIAL';
+    } else {
+      paymentStatus = 'UNPAID';
+    }
+
+    const result = await this.prisma.$transaction(async (prisma) => {
+      // 1. Crear tratamiento
       const newTreatment = await prisma.treatment.create({
         data: {
           clinicalHistoryId,
@@ -70,32 +88,64 @@ export class TreatmentService {
           estimatedSessions: createDto.estimatedSessions,
           status: createDto.status || 'PLANNED',
           clinicId: clinicId,
-          totalCost,
-          finalAmount: finalAmount,
-          amountPaid: 0,
+          totalCost: totalCost,
+          discount: 0,
+          finalAmount: totalCost || 0,
+          amountPaid: amountPaid,
           remainingBalance: remainingBalance,
-          paymentStatus: totalCost ? 'UNPAID' : 'UNPAID',
+          paymentStatus: paymentStatus,
         },
         include: {
           sessions: true,
         },
       });
 
+      let payment: any = null;
+
+      // 2. Registrar pago si hay
+      if (hasPayment) {
+        if (!createDto.paymentMethod) {
+          throw new BadRequestException('El método de pago es requerido');
+        }
+        payment = await prisma.payment.create({
+          data: {
+            treatmentId: newTreatment.id,
+            clinicId: clinicId,
+            amount: paymentAmount,
+            paymentMethod: createDto.paymentMethod,
+            reference: createDto.paymentReference || null,
+            notes: `Pago inicial de ${paymentAmount} al crear el tratamiento`,
+            registeredBy: userId,
+            ipAddress: ipAddress || null,
+            userAgent: userAgent || null,
+          },
+        });
+
+        // 3. Si es una sola sesión y está pagado completo, marcar como completado
+        if (createDto.estimatedSessions === 1 && remainingBalance <= 0) {
+          await prisma.treatment.update({
+            where: { id: newTreatment.id },
+            data: { status: 'COMPLETED' },
+          });
+        }
+      }
+
+      // 4. Auditoría
       await prisma.auditLog.create({
         data: {
           userId,
           action: 'CREATE_TREATMENT',
           entity: 'Treatment',
           entityId: newTreatment.id.toString(),
-          newValue: newTreatment,
+          newValue: { treatment: newTreatment, payment },
           clinicId: clinicId,
         },
       });
 
-      return newTreatment;
+      return { treatment: newTreatment, payment };
     });
 
-    return this.ToResponseDto(treatment);
+    return this.ToResponseDto(result.treatment);
   }
 
   async findByPatientId(patientId: number): Promise<TreatmentResponseDto[]> {

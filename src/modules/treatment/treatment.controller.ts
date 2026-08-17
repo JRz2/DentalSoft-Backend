@@ -9,6 +9,7 @@ import { CurrentUser } from 'src/common/decorators/current-user.decorator';
 import { RegisterPaymentDto } from './dto/register-payment.dto';
 import { UpdateCostDto } from './dto/update-cost.dto';
 
+@Controller('treatment')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class TreatmentController {
   constructor(private readonly treatmentService: TreatmentService) { }

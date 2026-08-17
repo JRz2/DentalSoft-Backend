@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
-import { TreatmentType, TreatmentStatus } from "@prisma/client";
-import { IsEnum, IsIn, IsInt, IsOptional, IsString, Min } from "class-validator";
+import { TreatmentType, TreatmentStatus, PaymentMethodType } from "@prisma/client";
+import { IsEnum, IsInt, IsNumber, IsOptional, IsPositive, IsString, Min } from "class-validator";
 
 export class CreateTreatmentDto {
     @ApiProperty({ example: 'Endodoncia Molar 36', description: 'Nombre del tratamiento' })
@@ -21,7 +21,7 @@ export class CreateTreatmentDto {
     @Min(1)
     estimatedSessions: number;
 
-    @ApiPropertyOptional({enum: TreatmentStatus, default: 'PLANED'})
+    @ApiPropertyOptional({ enum: TreatmentStatus, default: 'PLANED' })
     @IsEnum(TreatmentStatus)
     @IsOptional()
     status?: TreatmentStatus;
@@ -30,4 +30,20 @@ export class CreateTreatmentDto {
     @IsInt()
     @Min(1)
     totalCost?: number
+
+    @ApiPropertyOptional({ example: 150000 })
+    @IsNumber()
+    @IsPositive()
+    @IsOptional()
+    paymentAmount?: number;
+
+    @ApiPropertyOptional({ enum: PaymentMethodType, example: 'CASH' })
+    @IsEnum(PaymentMethodType)
+    @IsOptional()
+    paymentMethod?: PaymentMethodType;
+
+    @ApiPropertyOptional({ example: 'Voucher #123' })
+    @IsString()
+    @IsOptional()
+    paymentReference?: string;
 }
