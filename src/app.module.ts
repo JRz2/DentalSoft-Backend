@@ -13,6 +13,7 @@ import { ClinicConfigModule } from './modules/clinic-config/clinic-config.module
 import { ClinicModule } from './modules/clinic/clinic.module';
 import { TenantMiddleware } from './common/middleware/tenant.middleware';
 import { UploadModule } from './common/uploads/upload.module';
+import { MediaModule } from './modules/media/media.module';
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -30,6 +31,7 @@ import { UploadModule } from './common/uploads/upload.module';
     ClinicConfigModule,
     ClinicModule,
     UploadModule,
+    MediaModule,
   ],
 })
 export class AppModule {

@@ -37,13 +37,13 @@ async function bootstrap() {
     transformOptions: {
       enableImplicitConversion: true // Permite la conversión implícita de tipos (por ejemplo, string a number)
     },
-    /*exceptionFactory: (errors) => {
+    exceptionFactory: (errors) => {
       console.log('❌ ERRORES DE VALIDACIÓN:');
       errors.forEach(error => {
         console.log(`  - ${error.property}:`, error.constraints);
       });
       return new BadRequestException(errors);
-    }*/
+    }
   }));
 
   // ✅ Configuración de Swagger (ANTES del setGlobalPrefix)

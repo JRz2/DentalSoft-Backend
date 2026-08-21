@@ -18,13 +18,17 @@ export class CreateTreatmentDto {
 
     @ApiProperty({ example: 5, description: 'Número estimado de sesiones' })
     @IsInt()
-    @Min(1)
+    @Min(0)
     estimatedSessions: number;
 
     @ApiPropertyOptional({ enum: TreatmentStatus, default: 'PLANED' })
     @IsEnum(TreatmentStatus)
     @IsOptional()
     status?: TreatmentStatus;
+
+    @ApiPropertyOptional({ example: '2026-08-18T00:00:00.000Z' })
+    @IsOptional()
+    startDate?: Date;
 
     @ApiPropertyOptional({ example: 150000, description: 'Costo total del tratamiento' })
     @IsInt()
@@ -46,4 +50,10 @@ export class CreateTreatmentDto {
     @IsString()
     @IsOptional()
     paymentReference?: string;
+
+    @ApiPropertyOptional({ example: 10000, description: 'Descuento aplicado al tratamiento' })
+    @IsNumber()
+    @Min(0)
+    @IsOptional()
+    discount?: number;
 }

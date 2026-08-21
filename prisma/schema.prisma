@@ -61,6 +61,25 @@ enum PaymentMethodType{
   OTHER
 }
 
+enum MediaType {
+  IMAGE
+  VIDEO
+  DOCUMENT
+  XRAY
+  SCAN
+  OTHER
+}
+
+enum MediaCategory {
+  TREATMENT
+  SESSION
+  PRE_OPERATIVE
+  POST_OPERATIVE
+  INTRAOPERATIVE
+  DIAGNOSTIC
+  FOLLOW_UP
+}
+
 // ==================== MULTI-TENANT ====================
 model Clinic {
   id                Int      @id @default(autoincrement())
@@ -93,7 +112,8 @@ model Clinic {
   clinicalHistories ClinicalHistory[] 
   treatmentSessions TreatmentSession[] 
   payments          Payment[]
-  
+  media             Media[]
+
   @@index([subdomain])
   @@map("clinics")
 }
@@ -137,6 +157,7 @@ model User {
   patients       Patient[]   // Doctores que registraron pacientes
   appointments   Appointment[]
   payments       Payment[]
+  media             Media[]
 
   @@unique([clinicId, email]) 
   @@index([email])
@@ -329,6 +350,7 @@ model Treatment {
   sessions          TreatmentSession[]
   appointments      Appointment[] 
   payments          Payment[]
+  media             Media[]
 
   @@index([clinicId])
   @@index([clinicalHistoryId])
@@ -356,6 +378,8 @@ model TreatmentSession {
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
   
+  media             Media[]
+
   @@index([clinicId])
   @@index([treatmentId])
   @@index([appointmentId])
@@ -421,4 +445,50 @@ model Appointment {
   @@index([appointmentDate])
   @@index([status])
   @@index([appointmentDate, doctorId])
+}
+
+// ==================== MEDIA / ARCHIVOS ====================
+model Media {
+  id                Int      @id @default(autoincrement())
+  clinicId          Int
+  clinic            Clinic   @relation(fields: [clinicId], references: [id])
+  
+  // Relación polimórfica
+  treatmentId       Int?     
+  treatment         Treatment? @relation(fields: [treatmentId], references: [id], onDelete: Cascade)
+  
+  sessionId         Int?
+  treatmentSession  TreatmentSession? @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  
+  // Datos del archivo
+  fileName          String
+  filePath          String
+  fileSize          Int?
+  mimeType          String?
+  
+  // Metadatos
+  mediaType         MediaType @default(IMAGE)
+  category          MediaCategory?
+  title             String?
+  description       String?
+  
+  // Auditoría
+  uploadedBy        Int?
+  uploader          User?    @relation(fields: [uploadedBy], references: [id])
+  uploadedAt        DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  // Soft delete
+  deletedAt         DateTime?
+
+  // Índices
+  @@index([clinicId])
+  @@index([treatmentId])
+  @@index([sessionId])
+  @@index([mediaType])
+  @@index([category])
+  @@index([uploadedAt])
+  @@index([deletedAt])
+  
+  @@map("media")
 }

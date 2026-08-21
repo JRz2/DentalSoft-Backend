@@ -23,8 +23,26 @@ export class TreatmentResponseDto {
     status: string;
 
     @ApiProperty()
-    starDate: Date;
+    startDate: Date;
 
+    @ApiProperty({ example: 150000, description: 'Costo total del tratamiento' })
+    totalCost: number;
+
+    @ApiProperty()
+    discount: number;
+
+    @ApiProperty()
+    finalAmount: number;
+
+    @ApiProperty()
+    amountPaid: number;
+
+    @ApiProperty()
+    remainingBalance: number;
+
+    @ApiProperty()
+    paymentStatus: string;
+    
     @ApiPropertyOptional()
     endDate?: Date;
 
@@ -36,7 +54,7 @@ export class TreatmentResponseDto {
 
     @ApiPropertyOptional({ description: 'Sesiones del tratamiento' })
     sessions?: any[];
-    
+
     @ApiPropertyOptional({
         description: 'Datos del paciente asociado',
         type: 'object',
