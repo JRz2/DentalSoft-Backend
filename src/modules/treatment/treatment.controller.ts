@@ -1,4 +1,5 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, ParseIntPipe, Put, Req, BadRequestException } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, UseGuards, ParseIntPipe,
+  Put, Req, Headers } from '@nestjs/common';
 import { TreatmentService } from './treatment.service';
 import { CreateTreatmentDto } from './dto/create-treatment.dto';
 import { UpdateTreatmentDto } from './dto/update-treatment.dto';
@@ -7,8 +8,9 @@ import { RolesGuard } from 'src/common/guards/roles.guard';
 import { Roles } from 'src/common/decorators/roles.decorator';
 import { CurrentUser } from 'src/common/decorators/current-user.decorator';
 import { RegisterPaymentDto } from './dto/register-payment.dto';
+import { VoidPaymentDto } from './dto/void-payment.dto';
 import { UpdateCostDto } from './dto/update-cost.dto';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiBearerAuth, ApiHeader } from '@nestjs/swagger';
 
 @ApiTags('Treatment')
 @ApiBearerAuth()
@@ -16,6 +18,10 @@ import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagg
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class TreatmentController {
   constructor(private readonly treatmentService: TreatmentService) { }
+
+  // ============================================================
+  // CRUD
+  // ============================================================
 
   @Post(':clinicalHistoryId')
   @Roles('ADMIN', 'DOCTOR')
@@ -27,9 +33,9 @@ export class TreatmentController {
     @Req() req: any,
   ) {
     return this.treatmentService.create(
-      createTreatmentDto, 
-      clinicalHistoryId, 
-      user.id, 
+      createTreatmentDto,
+      clinicalHistoryId,
+      user.id,
       user.clinicId,
       req.ip,
       req.headers['user-agent'],
@@ -44,6 +50,15 @@ export class TreatmentController {
     @CurrentUser() user: { id: number; role: string; clinicId: number },
   ) {
     return this.treatmentService.findByPatientId(patientId, user.clinicId);
+  }
+
+  @Get()
+  @Roles('ADMIN', 'DOCTOR', 'RECEPTIONIST')
+  @ApiOperation({ summary: 'Obtener todos los tratamientos de la clínica' })
+  async findAllByClinic(
+    @CurrentUser() user: { id: number; role: string; clinicId: number },
+  ) {
+    return this.treatmentService.findAll(user.clinicId);
   }
 
   @Get(':id')
@@ -65,10 +80,29 @@ export class TreatmentController {
     @CurrentUser() user: { id: number; role: string; clinicId: number },
   ) {
     return this.treatmentService.update(
-      id, 
-      updateTreatmentDto, 
+      id,
+      updateTreatmentDto,
       user.clinicId,
       user.id,
+    );
+  }
+
+  // ============================================================
+  // TRANSICIONES DE ESTADO
+  // ============================================================
+
+  @Patch(':id/start')
+  @Roles('ADMIN', 'DOCTOR')
+  @ApiOperation({ summary: 'Iniciar un tratamiento (pasa a IN_PROGRESS)' })
+  async start(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: { id: number; role: string; clinicId: number },
+  ) {
+    return this.treatmentService.start(
+      id,
+      user.id,
+      user.role as any,
+      user.clinicId,
     );
   }
 
@@ -80,10 +114,10 @@ export class TreatmentController {
     @CurrentUser() user: { id: number; role: string; clinicId: number },
   ) {
     return this.treatmentService.complete(
-      id, 
-      user.id, 
-      user.role as any, 
-      user.clinicId
+      id,
+      user.id,
+      user.role as any,
+      user.clinicId,
     );
   }
 
@@ -95,40 +129,16 @@ export class TreatmentController {
     @CurrentUser() user: { id: number; role: string; clinicId: number },
   ) {
     return this.treatmentService.cancel(
-      id, 
-      user.id, 
-      user.role as any, 
-      user.clinicId
-    );
-  }
-
-  @Get()
-  @Roles('ADMIN', 'DOCTOR', 'RECEPTIONIST')
-  @ApiOperation({ summary: 'Obtener todos los tratamientos de la clínica' })
-  async findAllByClinic(
-    @CurrentUser() user: { id: number; role: string; clinicId: number },
-  ) {
-    return this.treatmentService.findAll(user.clinicId);
-  }
-
-  @Post(':treatmentId/payment')
-  @Roles('ADMIN', 'DOCTOR', 'RECEPTIONIST')
-  @ApiOperation({ summary: 'Registrar un pago para un tratamiento' })
-  async registerPayment(
-    @Param('treatmentId', ParseIntPipe) treatmentId: number,
-    @Body() paymentDto: RegisterPaymentDto,
-    @CurrentUser() user: { id: number; role: string; clinicId: number },
-    @Req() req: any,
-  ) {
-    return this.treatmentService.registerPayment(
-      treatmentId,
-      paymentDto,
+      id,
       user.id,
+      user.role as any,
       user.clinicId,
-      req.ip,
-      req.headers['user-agent'],
     );
   }
+
+  // ============================================================
+  // COSTO
+  // ============================================================
 
   @Patch(':treatmentId/cost')
   @Roles('ADMIN', 'DOCTOR')
@@ -139,10 +149,61 @@ export class TreatmentController {
     @CurrentUser() user: { id: number; role: string; clinicId: number },
   ) {
     return this.treatmentService.updateCost(
-      treatmentId, 
-      costDto, 
-      user.id, 
-      user.clinicId
+      treatmentId,
+      costDto,
+      user.id,
+      user.clinicId,
+    );
+  }
+
+  // ============================================================
+  // PAGOS
+  // ============================================================
+
+  @Post(':treatmentId/payment')
+  @Roles('ADMIN', 'DOCTOR', 'RECEPTIONIST')
+  @ApiOperation({ summary: 'Registrar un pago para un tratamiento' })
+  @ApiHeader({
+    name: 'Idempotency-Key',
+    description:
+      'UUID único por intento de submit. Evita dobles pagos por doble click o reintentos de red.',
+    required: false,
+  })
+  async registerPayment(
+    @Param('treatmentId', ParseIntPipe) treatmentId: number,
+    @Body() paymentDto: RegisterPaymentDto,
+    @Headers('idempotency-key') idempotencyKey: string | undefined,
+    @CurrentUser() user: { id: number; role: string; clinicId: number },
+    @Req() req: any,
+  ) {
+    return this.treatmentService.registerPayment(
+      treatmentId,
+      paymentDto,
+      user.id,
+      user.clinicId,
+      idempotencyKey,
+      {
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent'],
+      },
+    );
+  }
+
+  @Patch(':treatmentId/payment/:paymentId/void')
+  @Roles('ADMIN', 'DOCTOR')
+  @ApiOperation({ summary: 'Anular un pago (soft delete con auditoría)' })
+  async voidPayment(
+    @Param('treatmentId', ParseIntPipe) treatmentId: number,
+    @Param('paymentId', ParseIntPipe) paymentId: number,
+    @Body() dto: VoidPaymentDto,
+    @CurrentUser() user: { id: number; role: string; clinicId: number },
+  ) {
+    return this.treatmentService.voidPayment(
+      treatmentId,
+      paymentId,
+      dto,
+      user.id,
+      user.clinicId,
     );
   }
 

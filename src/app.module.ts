@@ -1,6 +1,6 @@
-// src/app.module.ts
 import { MiddlewareConsumer, Module, RequestMethod } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { ScheduleModule } from '@nestjs/schedule';
 import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
@@ -14,12 +14,16 @@ import { ClinicModule } from './modules/clinic/clinic.module';
 import { TenantMiddleware } from './common/middleware/tenant.middleware';
 import { UploadModule } from './common/uploads/upload.module';
 import { MediaModule } from './modules/media/media.module';
+import { DashboardModule } from './modules/dashboard/dashboard.module';
+import { IdempotencyCleanupTask } from './common/tasks/idempotency-cleanup.task';
+
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: '.env',
     }),
+    ScheduleModule.forRoot(),
     PrismaModule,
     AuthModule,
     UsersModule,
@@ -32,7 +36,9 @@ import { MediaModule } from './modules/media/media.module';
     ClinicModule,
     UploadModule,
     MediaModule,
+    DashboardModule,
   ],
+  providers: [IdempotencyCleanupTask],
 })
 export class AppModule {
   configure(consumer: MiddlewareConsumer) {

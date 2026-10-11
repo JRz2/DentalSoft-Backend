@@ -36,6 +36,13 @@ enum TreatmentStatus {
   CANCELLED
 }
 
+enum SessionStatus {
+  PENDING
+  COMPLETED
+  NO_SHOW
+  CANCELLED
+}
+
 enum AppointmentStatus {
   SCHEDULED
   CONFIRMED
@@ -53,12 +60,17 @@ enum PaymentStatus {
   CANCELLED
 }
 
-enum PaymentMethodType{
+enum PaymentMethodType {
   CASH
   CARD
   TRANSFER
   INSURANCE
   OTHER
+}
+
+enum PaymentStatusType {
+  ACTIVE
+  VOIDED
 }
 
 enum MediaType {
@@ -82,26 +94,26 @@ enum MediaCategory {
 
 // ==================== MULTI-TENANT ====================
 model Clinic {
-  id                Int      @id @default(autoincrement())
-  name              String   // Nombre de la clínica
-  subdomain         String   @unique  // "clinica1", "clinica2", "sonrisadental"
-  isActive          Boolean  @default(true)
-  
+  id        Int     @id @default(autoincrement())
+  name      String // Nombre de la clínica
+  subdomain String  @unique // "clinica1", "clinica2", "sonrisadental"
+  isActive  Boolean @default(true)
+
   // Datos de contacto
-  phone             String?
-  email             String?
-  address           String?
-  
+  phone   String?
+  email   String?
+  address String?
+
   // Configuración
-  logoUrl           String?
-  faviconUrl        String?
-  timezone          String   @default("America/Bogota")
-  
+  logoUrl    String?
+  faviconUrl String?
+  timezone   String  @default("America/Bogota")
+
   // Auditoría
-  createdBy         Int?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-  
+  createdBy Int?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   // Relaciones
   users             User[]
   patients          Patient[]
@@ -109,8 +121,8 @@ model Clinic {
   appointments      Appointment[]
   treatments        Treatment[]
   auditLogs         AuditLog[]
-  clinicalHistories ClinicalHistory[] 
-  treatmentSessions TreatmentSession[] 
+  clinicalHistories ClinicalHistory[]
+  treatmentSessions TreatmentSession[]
   payments          Payment[]
   media             Media[]
 
@@ -120,49 +132,50 @@ model Clinic {
 
 // ==================== MODELOS DE AUTENTICACIÓN ====================
 model User {
-  id             Int       @id @default(autoincrement())
-  clinicId       Int?
-  clinic         Clinic?    @relation(fields: [clinicId], references: [id])
-  name           String
-  email          String    @unique
-  password       String
-  role           Role      @default(DOCTOR)
-  photoUrl       String? 
+  id       Int     @id @default(autoincrement())
+  clinicId Int?
+  clinic   Clinic? @relation(fields: [clinicId], references: [id])
+  name     String
+  email    String  @unique
+  password String
+  role     Role    @default(DOCTOR)
+  photoUrl String?
 
   // Datos profesionales
-  specialty      String?   // Especialidad del doctor
-  licenseNumber  String?   // Registro médico
-  
+  specialty     String? // Especialidad del doctor
+  licenseNumber String? // Registro médico
+
   // Estado y seguridad
-  isActive       Boolean   @default(true)
-  emailVerified  Boolean   @default(false)
-  deletedAt      DateTime?
-  
-  // Información adicional
-  phoneNumber    String?
-  
+  isActive      Boolean   @default(true)
+  emailVerified Boolean   @default(false)
+  deletedAt     DateTime?
+
+  // Información  adicional
+  phoneNumber String?
+
   // Auditoría
-  createdBy      Int?
-  updatedBy      Int?
-  lastLoginAt    DateTime?
-  
+  createdBy   Int?
+  updatedBy   Int?
+  lastLoginAt DateTime?
+
   // Timestamps
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
-  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   // Relaciones
   sessions       Session[]
   auditLogs      AuditLog[]
   loginAttempts  LoginAttempt[]
-  patients       Patient[]   // Doctores que registraron pacientes
+  patients       Patient[] // Doctores que registraron pacientes
   appointments   Appointment[]
-  payments       Payment[]
-  media             Media[]
+  payments       Payment[]      @relation("RegisteredPayments")
+  voidedPayments Payment[]      @relation("VoidedPayments")
+  media          Media[]
 
-  @@unique([clinicId, email]) 
+  @@unique([clinicId, email])
+  @@unique([licenseNumber]) // PostgreSQL ignora NULL por defecto
   @@index([email])
   @@index([role])
-  @@unique([licenseNumber])  // PostgreSQL ignora NULL por defecto
   @@index([isActive])
   @@index([deletedAt])
 }
@@ -177,7 +190,7 @@ model Session {
   ipAddress    String?
   isRevoked    Boolean  @default(false)
   createdAt    DateTime @default(now())
-  
+
   @@index([userId])
   @@index([refreshToken])
   @@index([expiresAt])
@@ -193,7 +206,7 @@ model LoginAttempt {
   userAgent     String?
   failureReason String?
   createdAt     DateTime @default(now())
-  
+
   @@index([email])
   @@index([userId])
   @@index([createdAt])
@@ -201,8 +214,8 @@ model LoginAttempt {
 
 model AuditLog {
   id        Int      @id @default(autoincrement())
-  clinicId  Int?     
-  clinic    Clinic?   @relation(fields: [clinicId], references: [id]) 
+  clinicId  Int?
+  clinic    Clinic?  @relation(fields: [clinicId], references: [id])
   userId    Int?
   user      User?    @relation(fields: [userId], references: [id])
   action    String
@@ -212,7 +225,7 @@ model AuditLog {
   newValue  Json?
   ipAddress String?
   createdAt DateTime @default(now())
-  
+
   @@index([clinicId])
   @@index([userId])
   @@index([action])
@@ -223,134 +236,136 @@ model AuditLog {
 // ==================== MODELOS DE NEGOCIO ====================
 
 model ClinicConfig {
-  id                    Int      @id @default(autoincrement())
-  clinicId              Int      @unique
-  clinic                Clinic   @relation(fields: [clinicId], references: [id]) 
+  id       Int    @id @default(autoincrement())
+  clinicId Int    @unique
+  clinic   Clinic @relation(fields: [clinicId], references: [id])
 
   // Datos básicos
-  businessName          String?  // Razón social
-  commercialName        String?   // Nombre comercial
-  nit                   String?   @unique
-  address               String?
-  mobile                String?
-  email                 String?
-  website               String?
-  
+  businessName   String? // Razón social
+  commercialName String? // Nombre comercial
+  nit            String? @unique
+  address        String?
+  mobile         String?
+  email          String?
+  website        String?
+
   // Responsables
   legalRepresentative   String?
   legalRepresentativeId String?
   contactName           String?
   contactPhone          String?
-  
+
   // Imagen y marca
-  logoUrl               String?
-  faviconUrl            String?
-  headerImageUrl        String?
-  footerText            String?
-  
+  logoUrl        String?
+  faviconUrl     String?
+  headerImageUrl String?
+  footerText     String?
+
   // Datos legales
-  registrationNumber    String?
-  licenseNumber         String?
-  socialMedia           Json?
-  
+  registrationNumber String?
+  licenseNumber      String?
+  socialMedia        Json?
+
   // Auditoría
-  updatedBy             Int?
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
-  
+  updatedBy Int?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@index([clinicId])
   @@map("clinic_config")
 }
 
 model Patient {
-  id                Int      @id @default(autoincrement())
-  clinicId          Int
-  clinic            Clinic    @relation(fields: [clinicId], references: [id])
-  fullName          String
-  phoneNumber       String
-  email             String?
-  birthDate         DateTime
-  address           String?
-  medicalRecordNum  String   @unique
-  photoUrl          String? 
-  
+  id               Int      @id @default(autoincrement())
+  clinicId         Int
+  clinic           Clinic   @relation(fields: [clinicId], references: [id])
+  fullName         String
+  phoneNumber      String
+  email            String?
+  birthDate        DateTime
+  address          String?
+  medicalRecordNum String   @unique
+  photoUrl         String?
+
   // Datos odontológicos
   dentalHistory     String?
   habits            String?
   medicalConditions String?
-  
+
   // Registro
-  registeredBy      Int
-  doctor            User     @relation(fields: [registeredBy], references: [id])
-  
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-  deletedAt         DateTime?
+  registeredBy Int
+  doctor       User    @relation(fields: [registeredBy], references: [id])
+  isActive     Boolean @default(true)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
 
   // Relaciones
-  clinicalHistory   ClinicalHistory?
-  appointments      Appointment[]
-  
+  clinicalHistory ClinicalHistory?
+  appointments    Appointment[]
+
   @@unique([clinicId, medicalRecordNum])
   @@index([fullName])
   @@index([phoneNumber])
   @@index([registeredBy])
   @@index([medicalRecordNum])
+  @@index([isActive])
 }
 
 model ClinicalHistory {
-  id                Int      @id @default(autoincrement())
-  clinicId          Int     
-  clinic            Clinic   @relation(fields: [clinicId], references: [id]) 
-  patientId         Int      @unique
-  patient           Patient  @relation(fields: [patientId], references: [id])
-  
-  odontogram        Json?
-  medicalHistory    String?
-  allergies         String?
-  observations      String?
-  
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-  
+  id        Int     @id @default(autoincrement())
+  clinicId  Int
+  clinic    Clinic  @relation(fields: [clinicId], references: [id])
+  patientId Int     @unique
+  patient   Patient @relation(fields: [patientId], references: [id])
+
+  odontogram     Json?
+  medicalHistory String?
+  allergies      String?
+  observations   String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   // Relaciones
-  treatments        Treatment[]
-  
+  treatments Treatment[]
+
   @@index([clinicId])
   @@index([patientId])
 }
 
 model Treatment {
-  id                Int      @id @default(autoincrement())
-  clinicId          Int     
-  clinic            Clinic   @relation(fields: [clinicId], references: [id]) 
+  id                Int             @id @default(autoincrement())
+  clinicId          Int
+  clinic            Clinic          @relation(fields: [clinicId], references: [id])
   clinicalHistoryId Int
   clinicalHistory   ClinicalHistory @relation(fields: [clinicalHistoryId], references: [id])
-  
+
   name              String
   description       String?
   type              TreatmentType
   estimatedSessions Int
   status            TreatmentStatus @default(PLANNED)
-  
-  startDate         DateTime @default(now())
-  endDate           DateTime?
-  
-  totalCost         Decimal? @db.Decimal(10, 2)   
-  discount          Decimal? @default(0) @db.Decimal(10, 2)   
-  finalAmount       Decimal? @db.Decimal(10, 2) 
-  amountPaid        Decimal? @default(0) @db.Decimal(10, 2)
-  remainingBalance  Decimal? @db.Decimal(10, 2)
-  paymentStatus     PaymentStatus @default(UNPAID)
 
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-  
+  startDate DateTime  @default(now())
+  endDate   DateTime?
+
+  totalCost        Decimal?      @db.Decimal(10, 2)
+  discount         Decimal?      @default(0) @db.Decimal(10, 2)
+  finalAmount      Decimal?      @db.Decimal(10, 2)
+  amountPaid       Decimal?      @default(0) @db.Decimal(10, 2)
+  remainingBalance Decimal?      @db.Decimal(10, 2)
+  paymentStatus    PaymentStatus @default(UNPAID)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   // Relaciones
-  sessions          TreatmentSession[]
-  appointments      Appointment[] 
-  payments          Payment[]
-  media             Media[]
+  sessions     TreatmentSession[]
+  appointments Appointment[]
+  payments     Payment[]
+  media        Media[]
 
   @@index([clinicId])
   @@index([clinicalHistoryId])
@@ -359,86 +374,95 @@ model Treatment {
 }
 
 model TreatmentSession {
-  id                Int      @id @default(autoincrement())
-  clinicId          Int      
-  clinic            Clinic   @relation(fields: [clinicId], references: [id])
-  treatmentId       Int
-  treatment         Treatment @relation(fields: [treatmentId], references: [id])
-  
-  sessionNumber     Int
-  description       String
-  notes             String?
-  procedures        Json?
-  sessionDate       DateTime @default(now())
+  id          Int       @id @default(autoincrement())
+  clinicId    Int
+  clinic      Clinic    @relation(fields: [clinicId], references: [id])
+  treatmentId Int
+  treatment   Treatment @relation(fields: [treatmentId], references: [id])
 
-  appointmentId     Int?      @unique
-  appointment       Appointment? @relation(fields: [appointmentId], references: [id])
-  completedAt       DateTime?
-  
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-  
-  media             Media[]
+  sessionNumber Int
+  description   String
+  notes         String?
+  procedures    Json?
+  sessionDate   DateTime      @default(now())
+  status        SessionStatus @default(PENDING)
+
+  appointmentId Int?         @unique
+  appointment   Appointment? @relation(fields: [appointmentId], references: [id])
+  completedAt   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  media Media[]
 
   @@index([clinicId])
   @@index([treatmentId])
   @@index([appointmentId])
   @@index([sessionNumber])
+  @@index([status])
 }
 
 model Payment {
-  id                Int      @id @default(autoincrement())
-  treatmentId       Int
-  treatment         Treatment @relation(fields: [treatmentId], references: [id], onDelete: Cascade)
-  clinicId          Int
-  clinic            Clinic   @relation(fields: [clinicId], references: [id])
-  
-  amount            Decimal  @db.Decimal(10, 2)
-  paymentDate       DateTime @default(now())
-  paymentMethod     PaymentMethodType
-  reference         String?  // Número de voucher, transferencia, etc.
-  notes             String?
-  
+  id          Int       @id @default(autoincrement())
+  treatmentId Int
+  treatment   Treatment @relation(fields: [treatmentId], references: [id], onDelete: Cascade)
+  clinicId    Int
+  clinic      Clinic    @relation(fields: [clinicId], references: [id])
+
+  amount        Decimal           @db.Decimal(10, 2)
+  paymentDate   DateTime          @default(now())
+  paymentMethod PaymentMethodType
+  reference     String? // Número de voucher, transferencia, etc.
+  notes         String?
+
+  // soft delete / anulación
+  status       PaymentStatusType @default(ACTIVE)
+  voidedAt     DateTime?
+  voidedBy     Int?
+  voidedByUser User?             @relation("VoidedPayments", fields: [voidedBy], references: [id])
+  voidReason   String?
+
   // Auditoría
-  registeredBy      Int
-  user              User     @relation(fields: [registeredBy], references: [id])
-  ipAddress         String?
-  userAgent         String?
-  
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-  
-  @@index([treatmentId])
+  registeredBy Int
+  user         User    @relation("RegisteredPayments", fields: [registeredBy], references: [id])
+  ipAddress    String?
+  userAgent    String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([treatmentId, status])
   @@index([clinicId])
   @@index([paymentDate])
 }
 
 model Appointment {
-  id                Int      @id @default(autoincrement())
-  clinicId          Int      
-  clinic            Clinic   @relation(fields: [clinicId], references: [id]) 
-  patientId         Int
-  patient           Patient  @relation(fields: [patientId], references: [id])
-  doctorId          Int
-  doctor            User     @relation(fields: [doctorId], references: [id])
-  
-  appointmentDate   DateTime
-  duration          Int      @default(30)
-  status            AppointmentStatus @default(SCHEDULED)
-  treatmentId       Int?
-  treatment         Treatment?       @relation(fields: [treatmentId], references: [id])
-  treatmentSession  TreatmentSession? 
-  
-  reason            String
-  diagnosis         String?
-  notes             String?
-  
-  createdBy         Int?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-  cancelledAt       DateTime?
+  id        Int     @id @default(autoincrement())
+  clinicId  Int
+  clinic    Clinic  @relation(fields: [clinicId], references: [id])
+  patientId Int
+  patient   Patient @relation(fields: [patientId], references: [id])
+  doctorId  Int
+  doctor    User    @relation(fields: [doctorId], references: [id])
+
+  appointmentDate  DateTime
+  duration         Int               @default(30)
+  status           AppointmentStatus @default(SCHEDULED)
+  treatmentId      Int?
+  treatment        Treatment?        @relation(fields: [treatmentId], references: [id])
+  treatmentSession TreatmentSession?
+
+  reason    String
+  diagnosis String?
+  notes     String?
+
+  createdBy          Int?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  cancelledAt        DateTime?
   cancellationReason String?
-  
+
   @@index([clinicId])
   @@index([patientId])
   @@index([doctorId])
@@ -449,37 +473,37 @@ model Appointment {
 
 // ==================== MEDIA / ARCHIVOS ====================
 model Media {
-  id                Int      @id @default(autoincrement())
-  clinicId          Int
-  clinic            Clinic   @relation(fields: [clinicId], references: [id])
-  
+  id       Int    @id @default(autoincrement())
+  clinicId Int
+  clinic   Clinic @relation(fields: [clinicId], references: [id])
+
   // Relación polimórfica
-  treatmentId       Int?     
-  treatment         Treatment? @relation(fields: [treatmentId], references: [id], onDelete: Cascade)
-  
-  sessionId         Int?
-  treatmentSession  TreatmentSession? @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  
+  treatmentId Int?
+  treatment   Treatment? @relation(fields: [treatmentId], references: [id], onDelete: Cascade)
+
+  sessionId        Int?
+  treatmentSession TreatmentSession? @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
   // Datos del archivo
-  fileName          String
-  filePath          String
-  fileSize          Int?
-  mimeType          String?
-  
+  fileName String
+  filePath String
+  fileSize Int?
+  mimeType String?
+
   // Metadatos
-  mediaType         MediaType @default(IMAGE)
-  category          MediaCategory?
-  title             String?
-  description       String?
-  
+  mediaType   MediaType      @default(IMAGE)
+  category    MediaCategory?
+  title       String?
+  description String?
+
   // Auditoría
-  uploadedBy        Int?
-  uploader          User?    @relation(fields: [uploadedBy], references: [id])
-  uploadedAt        DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-  
+  uploadedBy Int?
+  uploader   User?    @relation(fields: [uploadedBy], references: [id])
+  uploadedAt DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
   // Soft delete
-  deletedAt         DateTime?
+  deletedAt DateTime?
 
   // Índices
   @@index([clinicId])
@@ -489,6 +513,22 @@ model Media {
   @@index([category])
   @@index([uploadedAt])
   @@index([deletedAt])
-  
   @@map("media")
+}
+
+// ============ MODEL IdempotencyKey ============
+model IdempotencyKey {
+  id           String   @id @default(uuid())
+  key          String
+  userId       Int
+  endpoint     String
+  method       String
+  requestHash  String
+  responseBody Json?
+  statusCode   Int?
+  createdAt    DateTime @default(now())
+  expiresAt    DateTime
+
+  @@unique([key, userId])
+  @@index([expiresAt])
 }

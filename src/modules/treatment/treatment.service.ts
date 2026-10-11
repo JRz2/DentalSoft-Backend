@@ -1,15 +1,25 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException,
+  UnauthorizedException } from '@nestjs/common';
 import { CreateTreatmentDto } from './dto/create-treatment.dto';
 import { UpdateTreatmentDto } from './dto/update-treatment.dto';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { TreatmentResponseDto } from './dto/treatment-response.dto';
-import { PaymentStatus, Role } from '@prisma/client';
+import { PaymentStatus, Role, Prisma } from '@prisma/client';
 import { RegisterPaymentDto } from './dto/register-payment.dto';
 import { UpdateCostDto } from './dto/update-cost.dto';
+import { VoidPaymentDto } from './dto/void-payment.dto';
+import { IdempotencyService } from 'src/common/services/idempotency.service';
 
 @Injectable()
 export class TreatmentService {
-  constructor(private readonly prisma: PrismaService) { }
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly idempotency: IdempotencyService,
+  ) { }
+
+  // ============================================================
+  // MAPPER
+  // ============================================================
 
   private ToResponseDto(treatment: any): TreatmentResponseDto {
     return {
@@ -29,17 +39,97 @@ export class TreatmentService {
       discount: treatment.discount ? Number(treatment.discount) : 0,
       finalAmount: treatment.finalAmount ? Number(treatment.finalAmount) : 0,
       amountPaid: treatment.amountPaid ? Number(treatment.amountPaid) : 0,
-      remainingBalance: treatment.remainingBalance ? Number(treatment.remainingBalance) : 0,
+      remainingBalance: treatment.remainingBalance
+        ? Number(treatment.remainingBalance)
+        : 0,
       paymentStatus: treatment.paymentStatus,
-      patient: treatment.clinicalHistory?.patient ? {
-        id: treatment.clinicalHistory.patient.id,
-        fullName: treatment.clinicalHistory.patient.fullName,
-        phoneNumber: treatment.clinicalHistory.patient.phoneNumber,
-        email: treatment.clinicalHistory.patient.email,
-        medicalRecordNum: treatment.clinicalHistory.patient.medicalRecordNum,
-      } : undefined,
+      patient: treatment.clinicalHistory?.patient
+        ? {
+          id: treatment.clinicalHistory.patient.id,
+          fullName: treatment.clinicalHistory.patient.fullName,
+          phoneNumber: treatment.clinicalHistory.patient.phoneNumber,
+          email: treatment.clinicalHistory.patient.email,
+          medicalRecordNum:
+            treatment.clinicalHistory.patient.medicalRecordNum,
+        }
+        : undefined,
     };
   }
+
+  // ============================================================
+  // HELPERS PRIVADOS
+  // ============================================================
+
+  /**
+   * Recalcula el estado de pago del tratamiento.
+   * IMPORTANTE: siempre debe llamarse dentro de una transacción.
+   */
+  private async recalculateTreatmentPaymentState(
+    tx: Prisma.TransactionClient,
+    treatmentId: number,
+  ): Promise<void> {
+    const treatment = await tx.treatment.findUnique({
+      where: { id: treatmentId },
+      select: { totalCost: true, discount: true },
+    });
+    if (!treatment) return;
+
+    const finalAmount =
+      Number(treatment.totalCost ?? 0) - Number(treatment.discount ?? 0);
+
+    const agg = await tx.payment.aggregate({
+      where: { treatmentId, status: 'ACTIVE' },
+      _sum: { amount: true },
+    });
+
+    const amountPaid = Number(agg._sum.amount ?? 0);
+    const remainingBalance = Math.max(0, finalAmount - amountPaid);
+
+    let paymentStatus: PaymentStatus;
+    if (amountPaid <= 0) paymentStatus = 'UNPAID';
+    else if (amountPaid + 0.001 < finalAmount) paymentStatus = 'PARTIAL';
+    else paymentStatus = 'PAID';
+
+    await tx.treatment.update({
+      where: { id: treatmentId },
+      data: {
+        finalAmount,
+        amountPaid,
+        remainingBalance,
+        paymentStatus,
+      },
+    });
+  }
+
+  private async validateUser(
+    userId: number,
+    clinicId: number,
+  ): Promise<void> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId, clinicId, deletedAt: null },
+    });
+    if (!user) {
+      throw new UnauthorizedException(
+        `User with ID ${userId} not found or doesn't belong to this clinic`,
+      );
+    }
+  }
+
+  private async validateTreatment(id: number, clinicId: number): Promise<any> {
+    const treatment = await this.prisma.treatment.findFirst({
+      where: { id, clinicId },
+    });
+    if (!treatment) {
+      throw new NotFoundException(
+        `Treatment with ID ${id} not found in this clinic`,
+      );
+    }
+    return treatment;
+  }
+
+  // ============================================================
+  // CRUD
+  // ============================================================
 
   async create(
     createDto: CreateTreatmentDto,
@@ -49,31 +139,26 @@ export class TreatmentService {
     ipAddress?: string,
     userAgent?: string,
   ): Promise<TreatmentResponseDto> {
-    // Validar que la historia clínica existe
     const clinicalHistory = await this.prisma.clinicalHistory.findUnique({
       where: { id: clinicalHistoryId },
     });
 
     if (!clinicalHistory) {
-      throw new NotFoundException(`Clinical history with ID ${clinicalHistoryId} not found`);
+      throw new NotFoundException(
+        `Clinical history with ID ${clinicalHistoryId} not found`,
+      );
     }
 
-    // Validar que el usuario existe
-    const user = await this.prisma.user.findUnique({
-      where: { id: userId, clinicId },
-    });
-
-    if (!user) {
-      throw new UnauthorizedException(`User with ID ${userId} not found or doesn't belong to this clinic`);
-    }
+    await this.validateUser(userId, clinicId);
 
     const totalCost = createDto.totalCost || 0;
     const paymentAmount = createDto.paymentAmount || 0;
-
     const hasPayment = paymentAmount > 0 && createDto.paymentMethod;
 
     const amountPaid = hasPayment ? paymentAmount : 0;
-    const remainingBalance = hasPayment ? (totalCost - paymentAmount) : (totalCost || 0);
+    const remainingBalance = hasPayment
+      ? totalCost - paymentAmount
+      : totalCost || 0;
 
     let paymentStatus: PaymentStatus;
     if (!totalCost || totalCost === 0) {
@@ -87,7 +172,6 @@ export class TreatmentService {
     }
 
     const result = await this.prisma.$transaction(async (prisma) => {
-      // 1. Crear tratamiento
       const newTreatment = await prisma.treatment.create({
         data: {
           clinicalHistoryId,
@@ -96,23 +180,20 @@ export class TreatmentService {
           type: createDto.type,
           estimatedSessions: createDto.estimatedSessions,
           status: createDto.status || 'PLANNED',
-          clinicId: clinicId,
-          totalCost: totalCost,
+          clinicId,
+          totalCost,
           discount: 0,
           finalAmount: totalCost || 0,
-          amountPaid: amountPaid,
-          remainingBalance: remainingBalance,
-          paymentStatus: paymentStatus,
+          amountPaid,
+          remainingBalance,
+          paymentStatus,
           startDate: createDto.startDate || new Date(),
         },
-        include: {
-          sessions: true,
-        },
+        include: { sessions: true },
       });
 
       let payment: any = null;
 
-      // 2. Registrar pago si hay
       if (hasPayment) {
         if (!createDto.paymentMethod) {
           throw new BadRequestException('El método de pago es requerido');
@@ -120,7 +201,7 @@ export class TreatmentService {
         payment = await prisma.payment.create({
           data: {
             treatmentId: newTreatment.id,
-            clinicId: clinicId,
+            clinicId,
             amount: paymentAmount,
             paymentMethod: createDto.paymentMethod,
             reference: createDto.paymentReference || null,
@@ -128,10 +209,10 @@ export class TreatmentService {
             registeredBy: userId,
             ipAddress: ipAddress || null,
             userAgent: userAgent || null,
+            status: 'ACTIVE',
           },
         });
 
-        // 3. Si es una sola sesión y está pagado completo, marcar como completado
         if (createDto.estimatedSessions === 1 && remainingBalance <= 0) {
           await prisma.treatment.update({
             where: { id: newTreatment.id },
@@ -140,16 +221,15 @@ export class TreatmentService {
         }
       }
 
-      // 4. Auditoría - AHORA CON TODOS LOS CAMPOS REQUERIDOS
       await prisma.auditLog.create({
         data: {
-          userId: userId,
+          userId,
           action: 'CREATE_TREATMENT',
           entity: 'Treatment',
           entityId: newTreatment.id.toString(),
           oldValue: undefined,
           newValue: JSON.stringify({ treatment: newTreatment, payment }),
-          clinicId: clinicId,
+          clinicId,
           ipAddress: ipAddress || null,
           createdAt: new Date(),
         },
@@ -161,28 +241,20 @@ export class TreatmentService {
     return this.ToResponseDto(result.treatment);
   }
 
-  async findByPatientId(patientId: number, clinicId: number): Promise<TreatmentResponseDto[]> {
+  async findByPatientId(
+    patientId: number,
+    clinicId: number,
+  ): Promise<TreatmentResponseDto[]> {
     const treatments = await this.prisma.treatment.findMany({
-      where: {
-        clinicalHistory: {
-          patientId,
-        },
-        clinicId, // Filtrar por clínica para multi-tenant
-      },
+      where: { clinicalHistory: { patientId }, clinicId },
       include: {
-        sessions: {
-          orderBy: { sessionNumber: 'asc' },
-        },
-        clinicalHistory: {
-          include: {
-            patient: true,
-          },
-        },
+        sessions: { orderBy: { sessionNumber: 'asc' } },
+        clinicalHistory: { include: { patient: true } },
       },
       orderBy: { createdAt: 'desc' },
     });
 
-    return treatments.map(treatment => this.ToResponseDto(treatment));
+    return treatments.map((t) => this.ToResponseDto(t));
   }
 
   async findAll(clinicId: number): Promise<TreatmentResponseDto[]> {
@@ -192,11 +264,7 @@ export class TreatmentService {
         clinicalHistory: {
           include: {
             patient: {
-              select: {
-                id: true,
-                fullName: true,
-                medicalRecordNum: true,
-              },
+              select: { id: true, fullName: true, medicalRecordNum: true },
             },
           },
         },
@@ -204,11 +272,7 @@ export class TreatmentService {
           orderBy: { sessionNumber: 'asc' },
           include: {
             appointment: {
-              select: {
-                id: true,
-                appointmentDate: true,
-                status: true,
-              },
+              select: { id: true, appointmentDate: true, status: true },
             },
           },
         },
@@ -216,15 +280,12 @@ export class TreatmentService {
       orderBy: { createdAt: 'desc' },
     });
 
-    return treatments.map(treatment => this.ToResponseDto(treatment));
+    return treatments.map((t) => this.ToResponseDto(t));
   }
 
   async findOne(id: number, clinicId: number): Promise<TreatmentResponseDto> {
     const treatment = await this.prisma.treatment.findFirst({
-      where: {
-        id,
-        clinicId, // IMPORTANTE: Validar que pertenece a la clínica
-      },
+      where: { id, clinicId },
       include: {
         clinicalHistory: {
           include: {
@@ -235,27 +296,25 @@ export class TreatmentService {
                 medicalRecordNum: true,
                 phoneNumber: true,
                 email: true,
-              }
-            }
-          }
+              },
+            },
+          },
         },
         sessions: {
           orderBy: { sessionNumber: 'asc' },
           include: {
             appointment: {
-              select: {
-                id: true,
-                appointmentDate: true,
-                status: true,
-              }
-            }
-          }
-        }
-      }
+              select: { id: true, appointmentDate: true, status: true },
+            },
+          },
+        },
+      },
     });
 
     if (!treatment) {
-      throw new NotFoundException(`Treatment with ID ${id} not found in this clinic`);
+      throw new NotFoundException(
+        `Treatment with ID ${id} not found in this clinic`,
+      );
     }
 
     return this.ToResponseDto(treatment);
@@ -265,346 +324,53 @@ export class TreatmentService {
     id: number,
     updateDto: UpdateTreatmentDto,
     clinicId: number,
-    userId: number
-  ): Promise<TreatmentResponseDto> {
-    // 1. Verificar que el tratamiento existe y pertenece a la clínica
-    const existingTreatment = await this.prisma.treatment.findFirst({
-      where: {
-        id,
-        clinicId,
-      },
-    });
-
-    if (!existingTreatment) {
-      throw new NotFoundException(`Treatment with ID ${id} not found in this clinic`);
-    }
-
-    // 2. Verificar que el usuario existe y pertenece a la clínica
-    const user = await this.prisma.user.findUnique({
-      where: {
-        id: userId,
-        clinicId,
-      },
-    });
-
-    if (!user) {
-      throw new UnauthorizedException(`User with ID ${userId} not found or doesn't belong to this clinic`);
-    }
-
-    // 3. Actualizar en transacción
-    const updatedTreatment = await this.prisma.$transaction(async (prisma) => {
-      // Preparar datos de actualización - solo campos permitidos
-      const updateData: any = {};
-
-      if (updateDto.name !== undefined) updateData.name = updateDto.name;
-      if (updateDto.description !== undefined) updateData.description = updateDto.description;
-      if (updateDto.type !== undefined) updateData.type = updateDto.type;
-      if (updateDto.estimatedSessions !== undefined) updateData.estimatedSessions = updateDto.estimatedSessions;
-      if (updateDto.status !== undefined) updateData.status = updateDto.status;
-      if (updateDto.startDate !== undefined) updateData.startDate = updateDto.startDate;
-      if (updateDto.endDate !== undefined) updateData.endDate = updateDto.endDate;
-
-      // NO permitir actualizar campos calculados
-      // totalCost, discount, finalAmount, amountPaid, remainingBalance, paymentStatus
-      // se actualizan SOLO a través de métodos específicos (updateCost, registerPayment)
-
-      // Actualizar el tratamiento
-      const treatment = await prisma.treatment.update({
-        where: { id },
-        data: updateData,
-        include: {
-          sessions: true,
-          clinicalHistory: {
-            include: {
-              patient: true,
-            },
-          },
-        },
-      });
-
-      // 4. Crear audit log - AHORA CON TODOS LOS CAMPOS REQUERIDOS
-      await prisma.auditLog.create({
-        data: {
-          userId: userId,
-          action: 'UPDATE_TREATMENT',
-          entity: 'Treatment',
-          entityId: id.toString(),
-          oldValue: JSON.stringify(existingTreatment),
-          newValue: JSON.stringify(treatment),
-          clinicId: clinicId,
-          ipAddress: null,
-          createdAt: new Date(),
-        },
-      });
-
-      return treatment;
-    });
-
-    return this.ToResponseDto(updatedTreatment);
-  }
-
-  async cancel(
-    id: number,
     userId: number,
-    userRole: Role,
-    clinicId: number
-  ): Promise<{ message: string }> {
-    // 1. Verificar que el tratamiento existe
+  ): Promise<TreatmentResponseDto> {
     const existingTreatment = await this.prisma.treatment.findFirst({
       where: { id, clinicId },
     });
 
     if (!existingTreatment) {
-      throw new NotFoundException(`Treatment with ID ${id} not found in this clinic`);
+      throw new NotFoundException(
+        `Treatment with ID ${id} not found in this clinic`,
+      );
     }
 
-    // 2. Validar permisos
-    if (userRole !== 'ADMIN' && userRole !== 'DOCTOR') {
-      throw new ForbiddenException('Only ADMIN or DOCTOR can cancel treatment');
-    }
+    await this.validateUser(userId, clinicId);
 
-    // 3. Validar que no esté ya cancelado o completado
-    if (existingTreatment.status === 'CANCELLED') {
-      throw new BadRequestException('Treatment is already cancelled');
-    }
+    const updatedTreatment = await this.prisma.$transaction(async (prisma) => {
+      const updateData: any = {};
 
-    if (existingTreatment.status === 'COMPLETED') {
-      throw new BadRequestException('Cannot cancel a completed treatment');
-    }
+      if (updateDto.name !== undefined) updateData.name = updateDto.name;
+      if (updateDto.description !== undefined)
+        updateData.description = updateDto.description;
+      if (updateDto.type !== undefined) updateData.type = updateDto.type;
+      if (updateDto.estimatedSessions !== undefined)
+        updateData.estimatedSessions = updateDto.estimatedSessions;
+      if (updateDto.status !== undefined) updateData.status = updateDto.status;
+      if (updateDto.startDate !== undefined)
+        updateData.startDate = updateDto.startDate;
+      if (updateDto.endDate !== undefined)
+        updateData.endDate = updateDto.endDate;
 
-    // 4. Cancelar en transacción
-    const cancelledTreatment = await this.prisma.$transaction(async (prisma) => {
       const treatment = await prisma.treatment.update({
         where: { id },
-        data: {
-          status: 'CANCELLED',
-          endDate: new Date()
-        },
+        data: updateData,
         include: {
           sessions: true,
+          clinicalHistory: { include: { patient: true } },
         },
       });
 
-      // 5. Auditoría
       await prisma.auditLog.create({
         data: {
-          userId: userId,
-          action: 'CANCEL_TREATMENT',
+          userId,
+          action: 'UPDATE_TREATMENT',
           entity: 'Treatment',
           entityId: id.toString(),
           oldValue: JSON.stringify(existingTreatment),
           newValue: JSON.stringify(treatment),
-          clinicId: clinicId,
-          ipAddress: null,
-          createdAt: new Date(),
-        },
-      });
-
-      return treatment;
-    });
-
-    return { message: 'Treatment cancelled successfully' };
-  }
-
-  async registerPayment(
-    treatmentId: number,
-    paymentDto: RegisterPaymentDto,
-    userId: number,
-    clinicId: number,
-    ipAddress?: string,
-    userAgent?: string,
-  ) {
-    // 1. Verificar que el tratamiento existe
-    const treatment = await this.prisma.treatment.findFirst({
-      where: {
-        id: treatmentId,
-        clinicId,
-      },
-      include: { payments: true },
-    });
-
-    if (!treatment) {
-      throw new NotFoundException(`Treatment with ID ${treatmentId} not found`);
-    }
-
-    // 2. Verificar que el usuario existe
-    const user = await this.prisma.user.findUnique({
-      where: { id: userId, clinicId },
-    });
-
-    if (!user) {
-      throw new UnauthorizedException(`User with ID ${userId} not found or doesn't belong to this clinic`);
-    }
-
-    // 3. Verificar que el tratamiento no está cancelado
-    if (treatment.status === 'CANCELLED') {
-      throw new BadRequestException('No se pueden registrar pagos en un tratamiento cancelado');
-    }
-
-    const remaining = treatment.remainingBalance ? Number(treatment.remainingBalance) : 0;
-
-    // 4. Verificar que el monto no exceda lo que falta
-    if (paymentDto.amount > remaining) {
-      throw new BadRequestException(
-        `El monto excede el saldo pendiente: ${remaining}`
-      );
-    }
-
-    // 5. Registrar el pago en transacción
-    const result = await this.prisma.$transaction(async (prisma) => {
-      // 5.1 Crear el pago
-      const payment = await prisma.payment.create({
-        data: {
-          treatmentId,
           clinicId,
-          amount: paymentDto.amount,
-          paymentMethod: paymentDto.paymentMethod,
-          reference: paymentDto.reference,
-          notes: paymentDto.notes,
-          registeredBy: userId,
-          ipAddress: ipAddress || null,
-          userAgent: userAgent || null,
-        },
-      });
-
-      // 5.2 Calcular nuevos montos
-      const currentAmountPaid = treatment.amountPaid ? Number(treatment.amountPaid) : 0;
-      const currentTotalCost = treatment.totalCost ? Number(treatment.totalCost) : 0;
-      const currentDiscount = treatment.discount ? Number(treatment.discount) : 0;
-      const currentFinalAmount = treatment.finalAmount ? Number(treatment.finalAmount) : currentTotalCost - currentDiscount;
-
-      const newAmountPaid = currentAmountPaid + paymentDto.amount;
-      const newRemaining = currentFinalAmount - newAmountPaid;
-
-      let paymentStatus: PaymentStatus;
-
-      if (newRemaining <= 0) {
-        paymentStatus = 'PAID';
-      } else if (newAmountPaid > 0) {
-        paymentStatus = 'PARTIAL';
-      } else {
-        paymentStatus = 'UNPAID';
-      }
-
-      // 5.3 Actualizar el tratamiento
-      const updatedTreatment = await prisma.treatment.update({
-        where: { id: treatmentId },
-        data: {
-          amountPaid: newAmountPaid,
-          remainingBalance: newRemaining,
-          paymentStatus: paymentStatus,
-        },
-        include: {
-          sessions: true,
-        },
-      });
-
-      // 5.4 Registrar auditoría
-      await prisma.auditLog.create({
-        data: {
-          userId: userId,
-          action: 'REGISTER_PAYMENT',
-          entity: 'Treatment',
-          entityId: treatmentId.toString(),
-          oldValue: JSON.stringify(treatment),
-          newValue: JSON.stringify({ payment, treatment: updatedTreatment }),
-          clinicId: clinicId,
-          ipAddress: ipAddress || null,
-          createdAt: new Date(),
-        },
-      });
-
-      return { payment, treatment: updatedTreatment };
-    });
-
-    return {
-      message: 'Pago registrado exitosamente',
-      payment: result.payment,
-      treatment: {
-        id: result.treatment.id,
-        totalCost: result.treatment.totalCost,
-        amountPaid: result.treatment.amountPaid,
-        remainingBalance: result.treatment.remainingBalance,
-        paymentStatus: result.treatment.paymentStatus,
-      },
-    };
-  }
-
-  async updateCost(
-    treatmentId: number,
-    costDto: UpdateCostDto,
-    userId: number,
-    clinicId: number,
-  ) {
-    // 1. Verificar que el tratamiento existe
-    const existingTreatment = await this.prisma.treatment.findFirst({
-      where: {
-        id: treatmentId,
-        clinicId,
-      },
-    });
-
-    if (!existingTreatment) {
-      throw new NotFoundException(`Treatment with ID ${treatmentId} not found`);
-    }
-
-    // 2. Verificar que el usuario existe
-    const user = await this.prisma.user.findUnique({
-      where: { id: userId, clinicId },
-    });
-
-    if (!user) {
-      throw new UnauthorizedException(`User with ID ${userId} not found or doesn't belong to this clinic`);
-    }
-
-    const currentAmountPaid = existingTreatment.amountPaid
-      ? Number(existingTreatment.amountPaid)
-      : 0;
-
-    const finalAmount = costDto.totalCost - (costDto.discount || 0);
-    const newRemaining = finalAmount - currentAmountPaid;
-
-    if (newRemaining < 0) {
-      throw new BadRequestException(
-        `El descuento no puede ser mayor al costo total. Costo: ${costDto.totalCost}, Pagado: ${currentAmountPaid}`
-      );
-    }
-
-    // 3. Actualizar en transacción
-    const updatedTreatment = await this.prisma.$transaction(async (prisma) => {
-      let paymentStatus: PaymentStatus;
-      if (newRemaining <= 0) {
-        paymentStatus = 'PAID';
-      } else if (currentAmountPaid > 0) {
-        paymentStatus = 'PARTIAL';
-      } else {
-        paymentStatus = 'UNPAID';
-      }
-
-      const treatment = await prisma.treatment.update({
-        where: { id: treatmentId },
-        data: {
-          totalCost: costDto.totalCost,
-          discount: costDto.discount || 0,
-          finalAmount: finalAmount,
-          remainingBalance: newRemaining,
-          paymentStatus: paymentStatus,
-        },
-        include: {
-          sessions: true,
-        },
-      });
-
-      // 4. Auditoría
-      await prisma.auditLog.create({
-        data: {
-          userId: userId,
-          action: 'UPDATE_TREATMENT_COST',
-          entity: 'Treatment',
-          entityId: treatmentId.toString(),
-          oldValue: JSON.stringify(existingTreatment),
-          newValue: JSON.stringify(treatment),
-          clinicId: clinicId,
           ipAddress: null,
           createdAt: new Date(),
         },
@@ -616,56 +382,70 @@ export class TreatmentService {
     return this.ToResponseDto(updatedTreatment);
   }
 
-  async getPaymentStatus(treatmentId: number, clinicId: number) {
+  async start(
+    id: number,
+    userId: number,
+    userRole: Role,
+    clinicId: number,
+  ): Promise<{ message: string; treatment: TreatmentResponseDto }> {
     const treatment = await this.prisma.treatment.findFirst({
-      where: {
-        id: treatmentId,
-        clinicId,
-      },
-      include: {
-        payments: {
-          orderBy: { paymentDate: 'desc' },
-          include: {
-            user: {
-              select: {
-                id: true,
-                name: true,
-                email: true,
-              },
-            },
-          },
-        },
-      },
+      where: { id, clinicId },
     });
 
     if (!treatment) {
-      throw new NotFoundException(`Treatment with ID ${treatmentId} not found`);
+      throw new NotFoundException(`Treatment with ID ${id} not found`);
     }
 
+    if (userRole !== 'ADMIN' && userRole !== 'DOCTOR') {
+      throw new ForbiddenException('Only ADMIN or DOCTOR can start treatments');
+    }
+
+    if (treatment.status === 'IN_PROGRESS') {
+      throw new BadRequestException('Treatment is already in progress');
+    }
+    if (treatment.status === 'COMPLETED') {
+      throw new BadRequestException('Cannot start a completed treatment');
+    }
+    if (treatment.status === 'CANCELLED') {
+      throw new BadRequestException('Cannot start a cancelled treatment');
+    }
+
+    const updatedTreatment = await this.prisma.$transaction(async (prisma) => {
+      const updated = await prisma.treatment.update({
+        where: { id },
+        data: { status: 'IN_PROGRESS' },
+        include: {
+          clinicalHistory: {
+            include: {
+              patient: {
+                select: { id: true, fullName: true, medicalRecordNum: true },
+              },
+            },
+          },
+          sessions: true,
+        },
+      });
+
+      await prisma.auditLog.create({
+        data: {
+          userId,
+          action: 'START_TREATMENT',
+          entity: 'Treatment',
+          entityId: id.toString(),
+          oldValue: JSON.stringify(treatment),
+          newValue: JSON.stringify(updated),
+          clinicId,
+          ipAddress: null,
+          createdAt: new Date(),
+        },
+      });
+
+      return updated;
+    });
+
     return {
-      treatmentId: treatment.id,
-      treatmentName: treatment.name,
-      totalCost: treatment.totalCost ? Number(treatment.totalCost) : 0,
-      discount: treatment.discount ? Number(treatment.discount) : 0,
-      finalAmount: treatment.finalAmount ? Number(treatment.finalAmount) : 0,
-      amountPaid: treatment.amountPaid ? Number(treatment.amountPaid) : 0,
-      remainingBalance: treatment.remainingBalance ? Number(treatment.remainingBalance) : 0,
-      paymentStatus: treatment.paymentStatus,
-      payments: treatment.payments.map((p) => ({
-        id: p.id,
-        amount: Number(p.amount),
-        paymentMethod: p.paymentMethod,
-        paymentDate: p.paymentDate,
-        reference: p.reference,
-        notes: p.notes,
-        registeredBy: p.user.name,
-        registeredById: p.user.id,
-      })),
-      summary: {
-        totalPayments: treatment.payments.length,
-        totalAmountPaid: treatment.amountPaid ? Number(treatment.amountPaid) : 0,
-        remaining: treatment.remainingBalance ? Number(treatment.remainingBalance) : 0,
-      },
+      message: 'Treatment started successfully',
+      treatment: this.ToResponseDto(updatedTreatment),
     };
   }
 
@@ -675,49 +455,36 @@ export class TreatmentService {
     userRole: Role,
     clinicId: number,
   ): Promise<{ message: string; treatment: TreatmentResponseDto }> {
-    // 1. Verificar que el tratamiento existe
     const treatment = await this.prisma.treatment.findFirst({
-      where: {
-        id,
-        clinicId,
-      },
+      where: { id, clinicId },
     });
 
     if (!treatment) {
       throw new NotFoundException(`Treatment with ID ${id} not found`);
     }
 
-    // 2. Validar permisos
     if (userRole !== 'ADMIN' && userRole !== 'DOCTOR') {
-      throw new ForbiddenException('Only ADMIN or DOCTOR can complete treatments');
+      throw new ForbiddenException(
+        'Only ADMIN or DOCTOR can complete treatments',
+      );
     }
 
-    // 3. Validar que el tratamiento no esté ya completado o cancelado
     if (treatment.status === 'COMPLETED') {
       throw new BadRequestException('Treatment is already completed');
     }
-
     if (treatment.status === 'CANCELLED') {
       throw new BadRequestException('Cannot complete a cancelled treatment');
     }
 
-    // 4. Actualizar el tratamiento a COMPLETED
     const updatedTreatment = await this.prisma.$transaction(async (prisma) => {
       const updated = await prisma.treatment.update({
         where: { id },
-        data: {
-          status: 'COMPLETED',
-          endDate: new Date(),
-        },
+        data: { status: 'COMPLETED', endDate: new Date() },
         include: {
           clinicalHistory: {
             include: {
               patient: {
-                select: {
-                  id: true,
-                  fullName: true,
-                  medicalRecordNum: true,
-                },
+                select: { id: true, fullName: true, medicalRecordNum: true },
               },
             },
           },
@@ -725,16 +492,15 @@ export class TreatmentService {
         },
       });
 
-      // 5. Registrar auditoría
       await prisma.auditLog.create({
         data: {
-          userId: userId,
+          userId,
           action: 'COMPLETE_TREATMENT',
           entity: 'Treatment',
           entityId: id.toString(),
           oldValue: JSON.stringify(treatment),
           newValue: JSON.stringify(updated),
-          clinicId: clinicId,
+          clinicId,
           ipAddress: null,
           createdAt: new Date(),
         },
@@ -749,31 +515,351 @@ export class TreatmentService {
     };
   }
 
-  // Método auxiliar para verificar existencia de usuario
-  private async validateUser(userId: number, clinicId: number): Promise<void> {
-    const user = await this.prisma.user.findUnique({
-      where: {
-        id: userId,
-        clinicId,
-        deletedAt: null,
-      },
-    });
-
-    if (!user) {
-      throw new UnauthorizedException(`User with ID ${userId} not found or doesn't belong to this clinic`);
-    }
-  }
-
-  // Método auxiliar para verificar existencia de tratamiento
-  private async validateTreatment(id: number, clinicId: number): Promise<any> {
-    const treatment = await this.prisma.treatment.findFirst({
+  async cancel(
+    id: number,
+    userId: number,
+    userRole: Role,
+    clinicId: number,
+  ): Promise<{ message: string }> {
+    const existingTreatment = await this.prisma.treatment.findFirst({
       where: { id, clinicId },
     });
 
-    if (!treatment) {
-      throw new NotFoundException(`Treatment with ID ${id} not found in this clinic`);
+    if (!existingTreatment) {
+      throw new NotFoundException(
+        `Treatment with ID ${id} not found in this clinic`,
+      );
     }
 
-    return treatment;
+    if (userRole !== 'ADMIN' && userRole !== 'DOCTOR') {
+      throw new ForbiddenException('Only ADMIN or DOCTOR can cancel treatment');
+    }
+
+    if (existingTreatment.status === 'CANCELLED') {
+      throw new BadRequestException('Treatment is already cancelled');
+    }
+    if (existingTreatment.status === 'COMPLETED') {
+      throw new BadRequestException('Cannot cancel a completed treatment');
+    }
+
+    await this.prisma.$transaction(async (prisma) => {
+      const treatment = await prisma.treatment.update({
+        where: { id },
+        data: { status: 'CANCELLED', endDate: new Date() },
+        include: { sessions: true },
+      });
+
+      await prisma.auditLog.create({
+        data: {
+          userId,
+          action: 'CANCEL_TREATMENT',
+          entity: 'Treatment',
+          entityId: id.toString(),
+          oldValue: JSON.stringify(existingTreatment),
+          newValue: JSON.stringify(treatment),
+          clinicId,
+          ipAddress: null,
+          createdAt: new Date(),
+        },
+      });
+    });
+
+    return { message: 'Treatment cancelled successfully' };
+  }
+
+  // ============================================================
+  // ACTUALIZAR COSTO
+  // ============================================================
+
+  async updateCost(
+    treatmentId: number,
+    costDto: UpdateCostDto,
+    userId: number,
+    clinicId: number,
+  ) {
+    const existingTreatment = await this.prisma.treatment.findFirst({
+      where: { id: treatmentId, clinicId },
+    });
+
+    if (!existingTreatment) {
+      throw new NotFoundException(
+        `Treatment with ID ${treatmentId} not found`,
+      );
+    }
+
+    await this.validateUser(userId, clinicId);
+
+    const currentAmountPaid = existingTreatment.amountPaid
+      ? Number(existingTreatment.amountPaid)
+      : 0;
+
+    const finalAmount = costDto.totalCost - (costDto.discount || 0);
+    const newRemaining = finalAmount - currentAmountPaid;
+
+    if (newRemaining < 0) {
+      throw new BadRequestException(
+        `El descuento no puede ser mayor al costo total. Costo: ${costDto.totalCost}, Pagado: ${currentAmountPaid}`,
+      );
+    }
+
+    const updatedTreatment = await this.prisma.$transaction(async (prisma) => {
+      let paymentStatus: PaymentStatus;
+      if (newRemaining <= 0) paymentStatus = 'PAID';
+      else if (currentAmountPaid > 0) paymentStatus = 'PARTIAL';
+      else paymentStatus = 'UNPAID';
+
+      const treatment = await prisma.treatment.update({
+        where: { id: treatmentId },
+        data: {
+          totalCost: costDto.totalCost,
+          discount: costDto.discount || 0,
+          finalAmount,
+          remainingBalance: newRemaining,
+          paymentStatus,
+        },
+        include: { sessions: true },
+      });
+
+      await prisma.auditLog.create({
+        data: {
+          userId,
+          action: 'UPDATE_TREATMENT_COST',
+          entity: 'Treatment',
+          entityId: treatmentId.toString(),
+          oldValue: JSON.stringify(existingTreatment),
+          newValue: JSON.stringify(treatment),
+          clinicId,
+          ipAddress: null,
+          createdAt: new Date(),
+        },
+      });
+
+      return treatment;
+    });
+
+    return this.ToResponseDto(updatedTreatment);
+  }
+
+  // ============================================================
+  // REGISTRAR PAGO (idempotencia + lock pesimista)
+  // ============================================================
+
+  async registerPayment(
+    treatmentId: number,
+    dto: RegisterPaymentDto,
+    userId: number,
+    clinicId: number,
+    idempotencyKey?: string,
+    meta?: { ipAddress?: string; userAgent?: string },
+  ) {
+    // Validaciones fail-fast fuera de la transacción
+    if (dto.amount <= 0) {
+      throw new BadRequestException('El monto debe ser mayor a 0');
+    }
+    if (dto.paymentMethod === 'TRANSFER' && !dto.reference?.trim()) {
+      throw new BadRequestException(
+        'La referencia es obligatoria para transferencias',
+      );
+    }
+
+    return this.idempotency.run(
+      idempotencyKey,
+      userId,
+      `POST /treatment/${treatmentId}/payment`,
+      'POST',
+      { treatmentId, ...dto },
+      async (tx) => {
+        // Lock pesimista: evita race conditions entre pagos concurrentes
+        const rows = await tx.$queryRaw<
+          Array<{
+            id: number;
+            totalCost: Prisma.Decimal | null;
+            discount: Prisma.Decimal | null;
+            amountPaid: Prisma.Decimal | null;
+          }>
+        >`SELECT id, "totalCost", "discount", "amountPaid"
+           FROM "Treatment"
+           WHERE id = ${treatmentId} AND "clinicId" = ${clinicId}
+           FOR UPDATE`;
+
+        if (rows.length === 0) {
+          throw new NotFoundException(`Treatment ${treatmentId} not found`);
+        }
+
+        const t = rows[0];
+        const finalAmount = Number(t.totalCost ?? 0) - Number(t.discount ?? 0);
+        const amountPaid = Number(t.amountPaid ?? 0);
+        const remaining = Math.max(0, finalAmount - amountPaid);
+
+        if (remaining <= 0.001) {
+          throw new BadRequestException({
+            code: 'TREATMENT_ALREADY_PAID',
+            message: 'El tratamiento ya está completamente pagado',
+          });
+        }
+        if (dto.amount > remaining + 0.001) {
+          throw new BadRequestException({
+            code: 'AMOUNT_EXCEEDS_BALANCE',
+            message: `El monto excede el saldo pendiente (Bs ${remaining.toFixed(2)})`,
+          });
+        }
+
+        const payment = await tx.payment.create({
+          data: {
+            treatmentId,
+            clinicId,
+            amount: dto.amount,
+            paymentMethod: dto.paymentMethod,
+            reference: dto.reference?.trim() || null,
+            notes: dto.notes?.trim() || null,
+            registeredBy: userId,
+            ipAddress: meta?.ipAddress,
+            userAgent: meta?.userAgent,
+            status: 'ACTIVE',
+          },
+        });
+
+        await this.recalculateTreatmentPaymentState(tx, treatmentId);
+
+        await tx.auditLog.create({
+          data: {
+            userId,
+            action: 'REGISTER_PAYMENT',
+            entity: 'Payment',
+            entityId: payment.id.toString(),
+            newValue: payment as any,
+            clinicId,
+            ipAddress: meta?.ipAddress || null,
+            createdAt: new Date(),
+          },
+        });
+
+        return payment;
+      },
+    );
+  }
+
+  // ============================================================
+  // ANULAR PAGO (soft delete + auditoría + recálculo)
+  // ============================================================
+
+  async voidPayment(
+    treatmentId: number,
+    paymentId: number,
+    dto: VoidPaymentDto,
+    userId: number,
+    clinicId: number,
+  ) {
+    const reason = dto.reason?.trim();
+    if (!reason || reason.length < 5) {
+      throw new BadRequestException(
+        'Se requiere un motivo (mínimo 5 caracteres)',
+      );
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const payment = await tx.payment.findFirst({
+        where: { id: paymentId, treatmentId, clinicId },
+      });
+
+      if (!payment) {
+        throw new NotFoundException(`Payment ${paymentId} not found`);
+      }
+      if (payment.status === 'VOIDED') {
+        throw new BadRequestException({
+          code: 'PAYMENT_ALREADY_VOIDED',
+          message: 'El pago ya está anulado',
+        });
+      }
+
+      const voided = await tx.payment.update({
+        where: { id: paymentId },
+        data: {
+          status: 'VOIDED',
+          voidedAt: new Date(),
+          voidedBy: userId,
+          voidReason: reason,
+        },
+      });
+
+      await this.recalculateTreatmentPaymentState(tx, treatmentId);
+
+      await tx.auditLog.create({
+        data: {
+          userId,
+          action: 'VOID_PAYMENT',
+          entity: 'Payment',
+          entityId: paymentId.toString(),
+          oldValue: payment as any,
+          newValue: voided as any,
+          clinicId,
+          createdAt: new Date(),
+        },
+      });
+
+      return voided;
+    });
+  }
+
+  // ============================================================
+  // GET PAYMENT STATUS
+  // ============================================================
+
+  async getPaymentStatus(treatmentId: number, clinicId: number) {
+    const treatment = await this.prisma.treatment.findFirst({
+      where: { id: treatmentId, clinicId },
+      include: {
+        payments: {
+          orderBy: { paymentDate: 'desc' },
+          include: {
+            user: { select: { id: true, name: true, email: true } },
+          },
+        },
+      },
+    });
+
+    if (!treatment) {
+      throw new NotFoundException(
+        `Treatment with ID ${treatmentId} not found`,
+      );
+    }
+
+    return {
+      treatmentId: treatment.id,
+      treatmentName: treatment.name,
+      totalCost: treatment.totalCost ? Number(treatment.totalCost) : 0,
+      discount: treatment.discount ? Number(treatment.discount) : 0,
+      finalAmount: treatment.finalAmount ? Number(treatment.finalAmount) : 0,
+      amountPaid: treatment.amountPaid ? Number(treatment.amountPaid) : 0,
+      remainingBalance: treatment.remainingBalance
+        ? Number(treatment.remainingBalance)
+        : 0,
+      paymentStatus: treatment.paymentStatus,
+      payments: treatment.payments.map((p) => ({
+        id: p.id,
+        amount: Number(p.amount),
+        paymentMethod: p.paymentMethod,
+        paymentDate: p.paymentDate,
+        reference: p.reference,
+        notes: p.notes,
+        registeredBy: p.user.name,
+        registeredById: p.user.id,
+        status: p.status,
+        voidedAt: p.voidedAt,
+        voidedBy: p.voidedBy,
+        voidReason: p.voidReason,
+      })),
+      summary: {
+        totalPayments: treatment.payments.length,
+        activePayments: treatment.payments.filter((p) => p.status === 'ACTIVE')
+          .length,
+        totalAmountPaid: treatment.amountPaid
+          ? Number(treatment.amountPaid)
+          : 0,
+        remaining: treatment.remainingBalance
+          ? Number(treatment.remainingBalance)
+          : 0,
+      },
+    };
   }
 }
