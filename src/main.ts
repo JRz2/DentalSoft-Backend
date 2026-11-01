@@ -23,13 +23,26 @@ async function bootstrap() {
     prefix: '/assets/',
   });
 
-  // Habilitar los Cors
+  // Lee los orígenes desde env, separados por coma. Fallback a localhost para dev.
+  const allowedOrigins = (process.env.CORS_ORIGINS ?? 'http://localhost:5173')
+    .split(',')
+    .map((o) => o.trim());
+
   app.enableCors({
-    origin: 'http://localhost:5173', // URL de tu frontend
+    origin: allowedOrigins,
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
     credentials: true,
-    allowedHeaders: 'Content-Type, Accept, Authorization, X-Requested-With, Idempotency-Key',
+    allowedHeaders:
+      'Content-Type, Accept, Authorization, X-Requested-With, Idempotency-Key',
   });
+
+  // Habilitar los Cors
+  /* app.enableCors({
+     origin: 'http://localhost:5173', // URL de tu frontend
+     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
+     credentials: true,
+     allowedHeaders: 'Content-Type, Accept, Authorization, X-Requested-With, Idempotency-Key',
+   });*/
 
   // validación global de las solicitudes entrantes utilizando ValidationPipe
   app.useGlobalPipes(new ValidationPipe({
@@ -95,7 +108,9 @@ async function bootstrap() {
     customCss: '.swagger-ui .topbar { display: none }', // Personalización del estilo de la UI de Swagger
   });
 
-  await app.listen(process.env.PORT ?? 3000);
+  //await app.listen(process.env.PORT ?? 3000);
+  const port = process.env.PORT || 3000;
+  await app.listen(port, '0.0.0.0');
 
   console.log(`🚀 Application running on: http://localhost:${process.env.PORT || 3000}`);
   console.log(`📚 API: http://localhost:${process.env.PORT || 3000}/api`);
