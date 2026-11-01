@@ -18,6 +18,7 @@ import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { IdempotencyCleanupTask } from './common/tasks/idempotency-cleanup.task';
 import { PaymentModule } from './modules/payment/payment.module';
 import { ReportsModule } from './modules/reports/reports.module';
+import { StorageModule } from './storage/storage.module';
 
 @Module({
   imports: [
@@ -41,6 +42,7 @@ import { ReportsModule } from './modules/reports/reports.module';
     DashboardModule,
     PaymentModule,
     ReportsModule,
+    StorageModule,
   ],
   providers: [IdempotencyCleanupTask],
 })
