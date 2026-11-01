@@ -280,7 +280,7 @@ model Patient {
   clinicId         Int
   clinic           Clinic   @relation(fields: [clinicId], references: [id])
   fullName         String
-  phoneNumber      String
+  phoneNumber      String?
   email            String?
   birthDate        DateTime
   address          String?

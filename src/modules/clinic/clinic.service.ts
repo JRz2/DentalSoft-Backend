@@ -153,6 +153,31 @@ export class ClinicService {
     return clinic;
   }
 
+  async getMyClinic(clinicId: number) {
+    const clinic = await this.prisma.clinic.findUnique({
+      where: { id: clinicId },
+      select: {
+        id: true,
+        name: true,
+        subdomain: true,
+        phone: true,
+        email: true,
+        address: true,
+        logoUrl: true,
+        faviconUrl: true,
+        isActive: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+
+    if (!clinic) {
+      throw new NotFoundException(`Clinic with ID ${clinicId} not found`);
+    }
+
+    return clinic;
+  }
+
   async remove(id: number) {
     await this.findOne(id);
 

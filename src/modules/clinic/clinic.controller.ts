@@ -1,10 +1,11 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, ParseIntPipe } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, ParseIntPipe, BadRequestException } from '@nestjs/common';
 import { ClinicService } from './clinic.service';
 import { CreateClinicDto } from './dto/create-clinic.dto';
 import { UpdateClinicDto } from './dto/update-clinic.dto';
 import { RolesGuard } from 'src/common/guards/roles.guard';
 import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
 import { Roles } from 'src/common/decorators/roles.decorator';
+import { CurrentUser } from 'src/common/decorators/current-user.decorator';
 
 @Controller('clinic')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -20,6 +21,17 @@ export class ClinicController {
   @Get()
   findAll() {
     return this.clinicService.findAll();
+  }
+
+  @Get('me')
+  @Roles('SUPER_ADMIN', 'ADMIN', 'DOCTOR', 'RECEPTIONIST')
+  async getMyClinic(
+    @CurrentUser() user: { id: number; role: string; clinicId?: number | null },
+  ) {
+    if (!user.clinicId) {
+      throw new BadRequestException('Usuario no asociado a ninguna clínica');
+    }
+    return this.clinicService.getMyClinic(user.clinicId);
   }
 
   @Get(':id')

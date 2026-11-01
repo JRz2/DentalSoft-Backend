@@ -5,11 +5,30 @@ import { PrismaService } from 'src/prisma/prisma.service';
 import { AdminChangePasswordDto } from './dto/admin-change-password.dto';
 import * as bycrypt from 'bcrypt';
 import { ChangePasswordDto } from './dto/change-password.dto';
+import { Role } from '@prisma/client';
+import { UserResponseDto } from './dto/user-response.dto';
 
 @Injectable()
 export class UsersService {
 
   constructor(private readonly prisma: PrismaService) { }
+
+  private ToResponseDto(user: any): UserResponseDto {
+    return {
+      id: user.id,
+      clinicId: user.clinicId,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      photoUrl: user.photoUrl,
+      specialty: user.specialty,
+      licenseNumber: user.licenseNumber,
+      phoneNumber: user.phoneNumber,
+      isActive: user.isActive,
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt,
+    };
+  }
 
   private async hashPassword(password: string): Promise<string> {
     return bycrypt.hash(password, 10);
@@ -331,6 +350,125 @@ export class UsersService {
 
   async getProfile(userId: number) {
     return this.findOne(userId);
+  }
+
+  async findAllByClinic(
+    clinicId: number,
+    params: {
+      page?: number;
+      limit?: number;
+      search?: string;
+      role?: Role;
+    },
+  ) {
+    const { page = 1, limit = 10, search, role } = params;
+    const skip = (page - 1) * limit;
+
+    const where: any = {
+      clinicId,
+      deletedAt: null,
+    };
+
+    if (search) {
+      where.OR = [
+        { name: { contains: search, mode: 'insensitive' } },
+        { email: { contains: search, mode: 'insensitive' } },
+      ];
+    }
+    if (role) where.role = role;
+
+    const [users, total] = await Promise.all([
+      this.prisma.user.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          role: true,
+          photoUrl: true,
+          specialty: true,
+          licenseNumber: true,
+          phoneNumber: true,
+          isActive: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      }),
+      this.prisma.user.count({ where }),
+    ]);
+
+    return {
+      data: users.map((u) => this.ToResponseDto(u)),
+      meta: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
+  }
+
+  async findStaffByClinic(
+    clinicId: number,
+    params: {
+      page?: number;
+      limit?: number;
+      search?: string;
+    },
+  ) {
+    const { page = 1, limit = 10, search } = params;
+    const skip = (page - 1) * limit;
+
+    const where: any = {
+      clinicId,
+      role: { in: ['DOCTOR', 'RECEPTIONIST'] },
+      deletedAt: null,
+      isActive: true,
+    };
+
+    if (search) {
+      where.OR = [
+        { name: { contains: search, mode: 'insensitive' } },
+        { email: { contains: search, mode: 'insensitive' } },
+        { specialty: { contains: search, mode: 'insensitive' } },
+      ];
+    }
+
+    const [users, total] = await Promise.all([
+      this.prisma.user.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: { role: 'asc' }, 
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          role: true,
+          photoUrl: true,
+          specialty: true,
+          licenseNumber: true,
+          phoneNumber: true,
+          isActive: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      }),
+      this.prisma.user.count({ where }),
+    ]);
+
+    return {
+      data: users.map((u) => this.ToResponseDto(u)),
+      meta: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
   }
 
 }

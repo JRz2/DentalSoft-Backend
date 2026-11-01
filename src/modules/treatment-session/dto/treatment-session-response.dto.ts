@@ -26,6 +26,9 @@ export class TreatmentSessionResponseDto {
     sessionDate: Date;
 
     @ApiProperty()
+    status: string;
+
+    @ApiProperty()
     createdAt: Date;
 
     @ApiProperty()

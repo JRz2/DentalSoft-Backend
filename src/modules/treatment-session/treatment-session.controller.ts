@@ -48,7 +48,42 @@ export class TreatmentSessionController {
     @Param('id', ParseIntPipe) id: number,
     @CurrentUser() user: { id: number; role: string; clinicId: number },
   ) {
-    return this.treatmentSessionService.complete(id, user.id, user.role as any, user.clinicId);
+    return this.treatmentSessionService.complete(
+      id,
+      user.id,
+      user.role as any,
+      user.clinicId,
+    );
+  }
+
+  @Patch(':id/no-show')
+  @Roles('ADMIN', 'DOCTOR')
+  noShow(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: { reason?: string },
+    @CurrentUser() user: { id: number; role: string; clinicId: number },
+  ) {
+    return this.treatmentSessionService.noShow(
+      id,
+      user.id,
+      user.role as any,
+      user.clinicId,
+      body.reason,
+    );
+  }
+
+  @Patch(':id/revert')
+  @Roles('ADMIN')
+  revert(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: { id: number; role: string; clinicId: number },
+  ) {
+    return this.treatmentSessionService.revert(
+      id,
+      user.id,
+      user.role as any,
+      user.clinicId,
+    );
   }
 
   @Delete(':id')

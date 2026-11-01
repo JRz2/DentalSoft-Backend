@@ -1,6 +1,6 @@
 import {
-  Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, Query, ParseIntPipe,
-  Put, UploadedFile, UseInterceptors, BadRequestException,
+  Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, Query, ParseIntPipe, UploadedFile, UseInterceptors, BadRequestException,
+  NotFoundException,
 } from '@nestjs/common';
 import { PatientService } from './patient.service';
 import { CreatePatientDto } from './dto/create-patient.dto';
@@ -72,11 +72,20 @@ export class PatientController {
   }
 
   @Delete(':id')
-  @Roles('ADMIN')
+  @Roles('ADMIN', 'DOCTOR')
   remove(
     @Param('id', ParseIntPipe) id: number,
     @CurrentUser() user: { id: number; role: string, clinicId: number },) {
     return this.patientService.remove(id, user.id, user.role as any, user.clinicId);
+  }
+
+  @Patch(':id/restore')
+  @Roles('ADMIN')
+  async restore(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: { id: number; role: string; clinicId: number },
+  ) {
+    return this.patientService.restore(id, user.id, user.clinicId);
   }
 
   @Post(':patientId/photo')
@@ -100,5 +109,14 @@ export class PatientController {
     });
 
     return { fileUrl, patientId, message: 'Photo uploaded successfully' };
+  }
+
+  @Delete(':patientId/photo')
+  @Roles('ADMIN', 'DOCTOR', 'RECEPTIONIST')
+  async deletePatientPhoto(
+    @Param('patientId', ParseIntPipe) patientId: number,
+    @CurrentUser() user: { id: number; role: string; clinicId: number },
+  ) {
+    return this.patientService.deletePhoto(patientId, user.clinicId);
   }
 }

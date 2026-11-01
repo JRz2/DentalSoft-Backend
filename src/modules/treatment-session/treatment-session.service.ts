@@ -1,9 +1,10 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { CreateTreatmentSessionDto } from './dto/create-treatment-session.dto';
 import { UpdateTreatmentSessionDto } from './dto/update-treatment-session.dto';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { TreatmentSessionResponseDto } from './dto/treatment-session-response.dto';
 import { Role } from '@prisma/client';
+import { format } from 'date-fns';
 
 @Injectable()
 export class TreatmentSessionService {
@@ -19,6 +20,7 @@ export class TreatmentSessionService {
       procedures: session.procedures,
       appointmentId: session.appointmentId,
       sessionDate: session.sessionDate,
+      status: session.status,
       createdAt: session.createdAt,
       updatedAt: session.updatedAt,
       appointment: session.appointment,
@@ -68,6 +70,7 @@ export class TreatmentSessionService {
       sessionDate: createTreatmentSessionDto.sessionDate
         ? new Date(createTreatmentSessionDto.sessionDate)
         : new Date(),
+      clinicId,
     };
 
     if (createTreatmentSessionDto.appointmentId) {
@@ -192,16 +195,24 @@ export class TreatmentSessionService {
     userRole: Role,
     clinicId: number,
   ): Promise<TreatmentSessionResponseDto> {
-    const session = await this.findOne(id);
-
     if (userRole !== 'ADMIN' && userRole !== 'DOCTOR') {
       throw new ForbiddenException('Only ADMIN or DOCTOR can complete sessions');
     }
 
+    const session = await this.findOne(id);
+
+    if (session.status === 'COMPLETED') {
+      throw new BadRequestException('La sesión ya está completada');
+    }
+
     const updatedSession = await this.prisma.$transaction(async (prisma) => {
+      // 1. Marcar la sesión como completada
       const completedSession = await prisma.treatmentSession.update({
         where: { id },
-        data: { completedAt: new Date() },
+        data: {
+          status: 'COMPLETED',
+          completedAt: new Date(),
+        },
         include: {
           appointment: {
             select: {
@@ -213,20 +224,28 @@ export class TreatmentSessionService {
         },
       });
 
-      const treatmentSession = await prisma.treatmentSession.findMany({
-        where: { treatmentId: session.treatmentId },
+      // 2. Verificar si el tratamiento debe cerrarse
+      const treatment = await prisma.treatment.findUnique({
+        where: { id: session.treatmentId },
       });
 
-      const allCompleted = treatmentSession.every(s => s.completedAt !== null);
-      const lastSession = treatmentSession.length === session.sessionNumber;
+      const sessions = await prisma.treatmentSession.findMany({
+        where: { treatmentId: session.treatmentId },
+        select: { status: true, sessionNumber: true },
+      });
 
-      if (allCompleted && lastSession) {
+      const allCompleted = sessions.every((s) => s.status === 'COMPLETED');
+      const isLastPlanned =
+        session.sessionNumber >= (treatment?.estimatedSessions ?? session.sessionNumber);
+
+      if (allCompleted && isLastPlanned && treatment?.status !== 'COMPLETED') {
         await prisma.treatment.update({
           where: { id: session.treatmentId },
           data: { status: 'COMPLETED', endDate: new Date() },
         });
       }
 
+      // 3. Auditoría
       await prisma.auditLog.create({
         data: {
           userId,
@@ -234,11 +253,121 @@ export class TreatmentSessionService {
           entity: 'TreatmentSession',
           entityId: id.toString(),
           newValue: completedSession,
-          clinicId: clinicId,
-        }
+          clinicId,
+        },
       });
 
       return completedSession;
+    });
+
+    return this.ToResponseDto(updatedSession);
+  }
+
+  async noShow(
+    id: number,
+    userId: number,
+    userRole: Role,
+    clinicId: number,
+    reason?: string,
+  ): Promise<TreatmentSessionResponseDto> {
+    if (userRole !== 'ADMIN' && userRole !== 'DOCTOR') {
+      throw new ForbiddenException('Only ADMIN or DOCTOR can mark no-show sessions');
+    }
+
+    const session = await this.findOne(id);
+
+    if (session.status === 'COMPLETED') {
+      throw new BadRequestException('No se puede marcar como no asistida una sesión completada');
+    }
+    if (session.status === 'NO_SHOW') {
+      throw new BadRequestException('La sesión ya está marcada como no asistida');
+    }
+
+    const trimmedReason = reason?.trim();
+    const noShowBlock = trimmedReason
+      ? `No asistió: ${trimmedReason}`
+      : 'No asistió';
+
+    const finalNotes = session.notes?.trim()
+      ? `${session.notes.trim()}\n\n${noShowBlock}`
+      : noShowBlock;
+
+    const updatedSession = await this.prisma.$transaction(async (prisma) => {
+      const noShowSession = await prisma.treatmentSession.update({
+        where: { id },
+        data: {
+          status: 'NO_SHOW',
+          notes: finalNotes,
+        },
+        include: {
+          appointment: {
+            select: { id: true, appointmentDate: true, status: true },
+          },
+        },
+      });
+
+      await prisma.auditLog.create({
+        data: {
+          userId,
+          action: 'NO_SHOW_TREATMENT_SESSION',
+          entity: 'TreatmentSession',
+          entityId: id.toString(),
+          newValue: noShowSession,
+          clinicId,
+        },
+      });
+
+      return noShowSession;
+    });
+
+    return this.ToResponseDto(updatedSession);
+  }
+
+  async revert(
+    id: number,
+    userId: number,
+    userRole: Role,
+    clinicId: number,
+  ): Promise<TreatmentSessionResponseDto> {
+    if (userRole !== 'ADMIN') {
+      throw new ForbiddenException('Only ADMIN can revert session status');
+    }
+
+    const session = await this.findOne(id);
+
+    if (session.status === 'PENDING') {
+      throw new BadRequestException('La sesión ya está pendiente');
+    }
+
+    const updatedSession = await this.prisma.$transaction(async (prisma) => {
+      const reverted = await prisma.treatmentSession.update({
+        where: { id },
+        data: { status: 'PENDING', completedAt: null },
+      });
+
+      // Si el tratamiento estaba COMPLETED, volver a IN_PROGRESS
+      const treatment = await prisma.treatment.findUnique({
+        where: { id: session.treatmentId },
+      });
+      if (treatment?.status === 'COMPLETED') {
+        await prisma.treatment.update({
+          where: { id: session.treatmentId },
+          data: { status: 'IN_PROGRESS', endDate: null },
+        });
+      }
+
+      await prisma.auditLog.create({
+        data: {
+          userId,
+          action: 'REVERT_TREATMENT_SESSION',
+          entity: 'TreatmentSession',
+          entityId: id.toString(),
+          newValue: reverted,
+          clinicId,
+        },
+      });
+
+      return reverted;
     });
 
     return this.ToResponseDto(updatedSession);

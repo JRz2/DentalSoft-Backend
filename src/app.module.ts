@@ -16,6 +16,8 @@ import { UploadModule } from './common/uploads/upload.module';
 import { MediaModule } from './modules/media/media.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { IdempotencyCleanupTask } from './common/tasks/idempotency-cleanup.task';
+import { PaymentModule } from './modules/payment/payment.module';
+import { ReportsModule } from './modules/reports/reports.module';
 
 @Module({
   imports: [
@@ -37,6 +39,8 @@ import { IdempotencyCleanupTask } from './common/tasks/idempotency-cleanup.task'
     UploadModule,
     MediaModule,
     DashboardModule,
+    PaymentModule,
+    ReportsModule,
   ],
   providers: [IdempotencyCleanupTask],
 })

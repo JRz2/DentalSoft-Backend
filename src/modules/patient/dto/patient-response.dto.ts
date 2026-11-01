@@ -59,4 +59,7 @@ export class PatientResponseDto {
 
     @ApiProperty({ example: '2024-01-15T10:30:00Z', description: 'Última actualización' })
     updatedAt: Date;
+
+    @ApiProperty({ example: true, description: 'Estado del paciente' })
+    isActive: boolean
 }

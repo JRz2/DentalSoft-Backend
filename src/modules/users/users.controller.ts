@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, BadRequestException, UseInterceptors, UploadedFile, ParseIntPipe } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, BadRequestException, UseInterceptors, UploadedFile, ParseIntPipe, Query } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
@@ -9,7 +9,7 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
 import { CurrentUser } from 'src/common/decorators/current-user.decorator';
 import { ChangePasswordDto } from './dto/change-password.dto';
-import { Multer } from 'multer';
+import { Role } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import type { Request } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -133,5 +133,41 @@ export class UsersController {
       userId,
       message: 'Foto de usuario actualizada correctamente'
     };
+  }
+
+  @Get()
+  @Roles('ADMIN', 'DOCTOR', 'RECEPTIONIST')
+  findAllByClinic(
+    @CurrentUser() user: { clinicId: number; role: string },
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('search') search?: string,
+  ) {
+    return this.usersService.findAllByClinic(
+      user.clinicId,
+      {
+        page: page ? parseInt(page) : 1,
+        limit: limit ? parseInt(limit) : 10,
+        search,
+      },
+    );
+  }
+
+  @Get('clinic/staff')
+  @Roles('ADMIN', 'DOCTOR', 'RECEPTIONIST')
+  async findStaffByClinic(
+    @CurrentUser() user: { id: number; clinicId: number; role: string },
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('search') search?: string,
+  ) {
+    return this.usersService.findStaffByClinic(
+      user.clinicId,
+      {
+        page: page ? parseInt(page, 10) : 1,
+        limit: limit ? parseInt(limit, 10) : 10,
+        search,
+      },
+    );
   }
 }

@@ -1,5 +1,7 @@
-import { Controller, Get, Post, Body, Patch, Param, UseGuards, ParseIntPipe,
-  Put, Req, Headers } from '@nestjs/common';
+import {
+  Controller, Get, Post, Body, Patch, Param, UseGuards, ParseIntPipe,
+  Put, Req, Headers
+} from '@nestjs/common';
 import { TreatmentService } from './treatment.service';
 import { CreateTreatmentDto } from './dto/create-treatment.dto';
 import { UpdateTreatmentDto } from './dto/update-treatment.dto';
@@ -215,5 +217,15 @@ export class TreatmentController {
     @CurrentUser() user: { id: number; role: string; clinicId: number },
   ) {
     return this.treatmentService.getPaymentStatus(treatmentId, user.clinicId);
+  }
+
+  @Get(':treatmentId/cost-history')
+  @Roles('ADMIN', 'DOCTOR', 'RECEPTIONIST')
+  @ApiOperation({ summary: 'Historial de cambios de costo' })
+  async getCostHistory(
+    @Param('treatmentId', ParseIntPipe) treatmentId: number,
+    @CurrentUser() user: { id: number; role: string; clinicId: number },
+  ) {
+    return this.treatmentService.getCostHistory(treatmentId, user.clinicId);
   }
 }

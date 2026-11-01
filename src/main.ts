@@ -4,11 +4,13 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { ValidationPipe, BadRequestException } from '@nestjs/common';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { join } from 'path';
+import { AllExceptionsFilter } from './common/filters/http-exception.filter';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
   app.setGlobalPrefix('api');
+  app.useGlobalFilters(new AllExceptionsFilter());
 
   const uploadsPath = join(process.cwd(), 'uploads');
   //Servir archivos estáticos de la carpeta uploads (una sola vez)
@@ -26,7 +28,7 @@ async function bootstrap() {
     origin: 'http://localhost:5173', // URL de tu frontend
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
     credentials: true,
-    allowedHeaders: 'Content-Type, Accept, Authorization',
+    allowedHeaders: 'Content-Type, Accept, Authorization, X-Requested-With, Idempotency-Key',
   });
 
   // validación global de las solicitudes entrantes utilizando ValidationPipe

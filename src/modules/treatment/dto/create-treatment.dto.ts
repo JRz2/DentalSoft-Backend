@@ -32,12 +32,12 @@ export class CreateTreatmentDto {
 
     @ApiPropertyOptional({ example: 150000, description: 'Costo total del tratamiento' })
     @IsInt()
-    @Min(1)
+    @Min(0, { message: 'El costo no puede ser negativo' })
     totalCost?: number
 
     @ApiPropertyOptional({ example: 150000 })
     @IsNumber()
-    @IsPositive()
+    @Min(0)
     @IsOptional()
     paymentAmount?: number;
 

@@ -18,6 +18,7 @@ export class CreatePatientDto {
         example: '+59178945612',
         description: 'Número de teléfono del paciente',
     })
+    @IsOptional()
     @IsString()
     phoneNumber: string;
 

@@ -72,5 +72,6 @@ export class TreatmentResponseDto {
         phoneNumber: string;
         email?: string;
         medicalRecordNum: string;
+        photoUrl?: string;
     };
 }
