@@ -33,3 +33,22 @@ export class CreateMediaDto {
     @IsOptional()
     description?: string;
 }
+
+export class CreateMediaFromB2Dto extends CreateMediaDto {
+    @ApiProperty({ example: 'media/1/uuid.png', description: 'El key o ruta del archivo en Backblaze B2' })
+    @IsString()
+    filePath: string;
+
+    @ApiProperty({ example: 'foto-paciente.png', description: 'Nombre original del archivo' })
+    @IsString()
+    fileName: string;
+
+    @ApiProperty({ example: 102400, description: 'Tamaño del archivo en bytes' })
+    @IsInt()
+    @Min(1)
+    fileSize: number;
+
+    @ApiProperty({ example: 'image/png', description: 'Tipo MIME del archivo' })
+    @IsString()
+    mimeType: string;
+}

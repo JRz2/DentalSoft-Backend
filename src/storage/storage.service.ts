@@ -7,60 +7,64 @@ import { randomUUID } from 'crypto';
 export class StorageService {
   private s3Client: S3Client;
   private bucketName: string;
+  private isLocal: boolean;
 
   constructor() {
     this.bucketName = process.env.B2_BUCKET_NAME as string;
-    
-    // Configuramos el cliente S3 apuntando a Backblaze B2
-    this.s3Client = new S3Client({
-      endpoint: process.env.B2_ENDPOINT,
-      region: process.env.B2_REGION,
-      credentials: {
-        accessKeyId: process.env.B2_ACCESS_KEY_ID as string,
-        secretAccessKey: process.env.B2_SECRET_ACCESS_KEY as string,
-      },
-      forcePathStyle: true, // 👈 OBLIGATORIO para Backblaze B2
-    });
+    // EL INTERRUPTOR: Si es 'local', usamos el disco. Si no, usamos B2.
+    this.isLocal = process.env.STORAGE_MODE === 'local';
+
+    if (!this.isLocal) {
+      this.s3Client = new S3Client({
+        endpoint: process.env.B2_ENDPOINT,
+        region: process.env.B2_REGION,
+        credentials: {
+          accessKeyId: process.env.B2_ACCESS_KEY_ID as string,
+          secretAccessKey: process.env.B2_SECRET_ACCESS_KEY as string,
+        },
+        forcePathStyle: true,
+      });
+    }
   }
 
-  // 1. Genera la URL para SUBIR un archivo
   async generateUploadUrl(folder: string, contentType: string) {
-    try {
-      const fileExtension = contentType.split('/')[1] || 'jpg';
-      const fileName = `${folder}/${randomUUID()}.${fileExtension}`;
+    const fileExtension = contentType.split('/')[1] || 'jpg';
+    const fileName = `${folder}/${randomUUID()}.${fileExtension}`;
 
+    if (this.isLocal) {
+      // MODO LOCAL: No hay URL prefirmada. El frontend subirá a /uploads/temp
+      return { uploadUrl: null, key: fileName, mode: 'local' };
+    }
+
+    // MODO B2
+    try {
       const command = new PutObjectCommand({
         Bucket: this.bucketName,
         Key: fileName,
         ContentType: contentType,
       });
-
-      // URL válida por 15 minutos
       const uploadUrl = await getSignedUrl(this.s3Client, command, { expiresIn: 900 });
-
-      return {
-        uploadUrl, // El frontend usa esta URL para el PUT
-        key: fileName, // Guarda esto en tu base de datos (Prisma)
-      };
+      return { uploadUrl, key: fileName, mode: 'b2' };
     } catch (error) {
-      console.error('Error generando URL de subida:', error);
-      throw new InternalServerErrorException('No se pudo generar la URL de subida');
+      throw new InternalServerErrorException('Error generando URL de subida');
     }
   }
 
-  // 2. Genera la URL para VER/DESCARGAR un archivo (porque el bucket es privado)
   async generateDownloadUrl(key: string) {
+    if (this.isLocal) {
+      // MODO LOCAL: Devolvemos la ruta estática de tu backend en local
+      return `http://localhost:3000/uploads/${key}`;
+    }
+
+    // MODO B2
     try {
       const command = new GetObjectCommand({
         Bucket: this.bucketName,
         Key: key,
       });
-      
-      // URL válida por 1 hora (3600 segundos)
       return await getSignedUrl(this.s3Client, command, { expiresIn: 3600 });
     } catch (error) {
-      console.error('Error generando URL de descarga:', error);
-      throw new InternalServerErrorException('No se pudo generar la URL de descarga');
+      throw new InternalServerErrorException('Error generando URL de descarga');
     }
   }
 }
