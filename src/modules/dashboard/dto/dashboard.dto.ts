@@ -111,10 +111,11 @@ export interface TodayAppointment {
     patientPhone?: string | null;
     treatment: string;
     time: string;
+    date: string;
+    appointmentDate?: string;
     status: string;
     duration: number;
-    doctorName?: string; // Opcional para compatibilidad
-    date?: string;       // Opcional para compatibilidad
+    doctorName?: string;
 }
 
 export interface MonthlyData {
@@ -144,11 +145,10 @@ export interface TreatmentDistribution {
     percentage: number;
 }
 
-// ✅ Email ahora puede ser string o null
 export interface NewPatient {
     id: number;
     fullName: string;
-    email: string | null; // Cambiado a string | null
+    email: string | null;
     phoneNumber: string | null;
     createdAt: string;
 }
@@ -183,7 +183,6 @@ export interface WeeklyTreatmentActivity {
     average: number;
 }
 
-// ✅ Nueva interfaz para desglose por estado
 export interface TreatmentStatusBreakdown {
     status: string;
     count: number;
