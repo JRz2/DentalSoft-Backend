@@ -10,8 +10,26 @@ export interface LocalParts {
  * Inmune al TZ del servidor (Render = UTC).
  */
 export function toClinicDateParts(input: Date | string): LocalParts {
+    // Si recibimos YYYY-MM-DD, conservar la fecha tal como fue enviada.
+    // No convertirla a Date porque JavaScript la interpreta como UTC.
+    if (typeof input === 'string') {
+        const dateOnlyMatch = input.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+
+        if (dateOnlyMatch) {
+            const [, year, month, day] = dateOnlyMatch;
+
+            return {
+                date: `${year}-${month}-${day}`,
+                time: '00:00',
+            };
+        }
+    }
+
     const d = typeof input === 'string' ? new Date(input) : input;
-    if (isNaN(d.getTime())) return { date: '', time: '' };
+
+    if (isNaN(d.getTime())) {
+        return { date: '', time: '' };
+    }
 
     const parts = new Intl.DateTimeFormat('en-CA', {
         timeZone: CLINIC_TZ,
