@@ -11,7 +11,7 @@ export class AuthService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
-  ) {}
+  ) { }
 
   private async hashPassword(password: string): Promise<string> {
     return bcrypt.hash(password, 10);
@@ -41,29 +41,29 @@ export class AuthService {
     const hashedPassword = await this.hashPassword(registerDto.password);
 
     const user = await this.prisma.user.create({
-        data: {
-            name: registerDto.name,
-            email: registerDto.email,
-            password: hashedPassword,
-            role: registerDto.role || Role.DOCTOR,
-            specialty: registerDto.specialty,
-            licenseNumber: registerDto.licenseNumber,
-            phoneNumber: registerDto.phoneNumber,
-            isActive: true,
-        },
-        select: {
-            id: true,
-            name: true,
-            email: true,
-            role: true,
-            specialty: true,
-            licenseNumber: true,
-            phoneNumber: true,
-            photoUrl: true,
-            isActive: true,
-            createdAt: true,
-            clinicId: true,
-        },
+      data: {
+        name: registerDto.name,
+        email: registerDto.email,
+        password: hashedPassword,
+        role: registerDto.role || Role.DOCTOR,
+        specialty: registerDto.specialty,
+        licenseNumber: registerDto.licenseNumber,
+        phoneNumber: registerDto.phoneNumber,
+        isActive: true,
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        specialty: true,
+        licenseNumber: true,
+        phoneNumber: true,
+        photoUrl: true,
+        isActive: true,
+        createdAt: true,
+        clinicId: true,
+      },
     });
 
     const token = this.generateToken(user.id, user.email, user.role, user.clinicId);
@@ -96,29 +96,33 @@ export class AuthService {
     }
 
     if (!user.isActive) {
-      throw new UnauthorizedException('User account is disabled');
+      throw new UnauthorizedException({
+        statusCode: 401,
+        code: 'ACCOUNT_DISABLED',
+        message: 'Tu cuenta está deshabilitada. Contactá al administrador.',
+      });
     }
 
     const token = this.generateToken(user.id, user.email, user.role, user.clinicId);
 
     await this.prisma.user.update({
-        where: { id: user.id },
-        data: { lastLoginAt: new Date() },
+      where: { id: user.id },
+      data: { lastLoginAt: new Date() },
     });
 
     return {
-        access_token: token,
-        user: {
-            id: user.id,
-            name: user.name,
-            email: user.email,
-            role: user.role,
-            specialty: user.specialty,
-            phoneNumber: user.phoneNumber,
-            photoUrl: user.photoUrl,
-            clinicId: user.clinicId,
-            clinicName: user.clinic?.name ,
-        },
+      access_token: token,
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        specialty: user.specialty,
+        phoneNumber: user.phoneNumber,
+        photoUrl: user.photoUrl,
+        clinicId: user.clinicId,
+        clinicName: user.clinic?.name,
+      },
     };
   }
 }
