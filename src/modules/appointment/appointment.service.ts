@@ -285,6 +285,7 @@ export class AppointmentService {
               fullName: true,
               phoneNumber: true,
               email: true,
+              photoUrl: true,
             },
           },
           doctor: {
